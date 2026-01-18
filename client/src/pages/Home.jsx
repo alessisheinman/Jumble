@@ -1,15 +1,19 @@
-import { useSearchParams } from 'react-router-dom'
+import { useSearchParams, useNavigate } from 'react-router-dom'
+
+// Server URL - change this when deploying backend
+const SERVER_URL = import.meta.env.VITE_SERVER_URL || 'http://localhost:3001'
 
 function Home() {
   const [searchParams] = useSearchParams()
+  const navigate = useNavigate()
   const error = searchParams.get('error')
 
   const handleHostGame = () => {
-    window.location.href = 'http://localhost:3001/login'
+    window.location.href = `${SERVER_URL}/login`
   }
 
   const handleJoinGame = () => {
-    window.location.href = '/play'
+    navigate('/play')
   }
 
   return (

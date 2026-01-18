@@ -1,8 +1,11 @@
 import { useState, useEffect, useRef } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useSearchParams, useNavigate } from 'react-router-dom'
 import { io } from 'socket.io-client'
 
-const SOCKET_URL = 'http://localhost:3001'
+// Server URL - change this when deploying backend
+const SOCKET_URL = import.meta.env.VITE_SERVER_URL || 'http://localhost:3001'
+// Client URL for players to join
+const CLIENT_URL = import.meta.env.VITE_CLIENT_URL || 'localhost:5173/#/play'
 
 function Host() {
   const [searchParams] = useSearchParams()
@@ -26,8 +29,8 @@ function Host() {
     const token = searchParams.get('access_token')
     if (token) {
       setAccessToken(token)
-      // Clean up URL
-      window.history.replaceState({}, document.title, '/host')
+      // Clean up URL (works with HashRouter)
+      window.history.replaceState({}, document.title, window.location.pathname + '#/host')
     }
   }, [searchParams])
 
@@ -189,7 +192,7 @@ function Host() {
     return (
       <div className="container" style={{ textAlign: 'center', marginTop: '20vh' }}>
         <h2>Connecting to Spotify...</h2>
-        <p>If this takes too long, <a href="/" style={{ color: '#1DB954' }}>go back</a> and try again.</p>
+        <p>If this takes too long, <a href="#/" style={{ color: '#1DB954' }}>go back</a> and try again.</p>
       </div>
     )
   }
@@ -226,7 +229,7 @@ function Host() {
           <h2>Room Code</h2>
           <div className="room-code">{roomCode}</div>
           <p style={{ color: '#888', marginBottom: 20 }}>
-            Players join at <strong>localhost:5173/play</strong>
+            Players join at <strong>{CLIENT_URL}</strong>
           </p>
           <p style={{ color: '#888', marginBottom: 20 }}>
             {trackCount} songs loaded
@@ -353,7 +356,7 @@ function Host() {
             ))}
           </div>
 
-          <button onClick={() => window.location.href = '/'} style={{ marginTop: 30 }}>
+          <button onClick={() => window.location.href = '#/'} style={{ marginTop: 30 }}>
             Play Again
           </button>
         </div>

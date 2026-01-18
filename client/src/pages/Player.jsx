@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react'
 import { io } from 'socket.io-client'
 
-const SOCKET_URL = 'http://localhost:3001'
+// Server URL - change this when deploying backend
+const SOCKET_URL = import.meta.env.VITE_SERVER_URL || 'http://localhost:3001'
 
 function Player() {
   const [socket, setSocket] = useState(null)
@@ -152,6 +153,9 @@ function Player() {
           <button onClick={handleJoin} style={{ width: '100%' }}>
             Join
           </button>
+          <a href="#/" style={{ color: '#888', display: 'block', marginTop: 20, textDecoration: 'none' }}>
+            ← Back to Home
+          </a>
         </div>
       )}
 
