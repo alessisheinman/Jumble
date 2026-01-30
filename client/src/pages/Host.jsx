@@ -190,6 +190,36 @@ function Host() {
         <div className="game-screen">
           <h2>Round {currentRound}</h2>
 
+          {/* Player List - Always Visible */}
+          <div className="scoreboard" style={{ marginBottom: 30 }}>
+            {players.map(player => (
+              <div
+                key={player.id}
+                className="score-card"
+                style={{
+                  background: currentPlayer && player.id === currentPlayer.id
+                    ? 'rgba(29, 185, 84, 0.3)'
+                    : 'rgba(255, 255, 255, 0.05)',
+                  border: currentPlayer && player.id === currentPlayer.id
+                    ? '2px solid #1DB954'
+                    : '2px solid transparent',
+                  transform: currentPlayer && player.id === currentPlayer.id
+                    ? 'scale(1.05)'
+                    : 'scale(1)',
+                  transition: 'all 0.3s ease'
+                }}
+              >
+                <div className="name">
+                  {player.name}
+                  {currentPlayer && player.id === currentPlayer.id && (
+                    <span style={{ marginLeft: '8px', color: '#1DB954', fontSize: '0.9rem' }}>◀ Current</span>
+                  )}
+                </div>
+                <div className="stars">{'★'.repeat(player.stars)}{'☆'.repeat(10 - player.stars)}</div>
+              </div>
+            ))}
+          </div>
+
           {currentPlayer && (
             <div style={{ background: 'rgba(29, 185, 84, 0.2)', padding: '20px', borderRadius: '12px', marginBottom: '20px' }}>
               <p style={{ fontSize: '1.5rem', color: '#1DB954', fontWeight: 'bold' }}>
@@ -212,15 +242,6 @@ function Host() {
           <button onClick={handleEndRound}>
             End Round
           </button>
-
-          <div className="scoreboard" style={{ marginTop: 30 }}>
-            {players.map(player => (
-              <div key={player.id} className="score-card">
-                <div className="name">{player.name}</div>
-                <div className="stars">{'★'.repeat(player.stars)}{'☆'.repeat(10 - player.stars)}</div>
-              </div>
-            ))}
-          </div>
         </div>
       )}
 
@@ -289,6 +310,12 @@ function Host() {
           <button onClick={handleNextRound} style={{ marginTop: 20 }}>
             Next Round
           </button>
+
+          {roundResults.skippedNext && (
+            <p style={{ textAlign: 'center', color: '#888', marginTop: 15 }}>
+              Next player was skipped!
+            </p>
+          )}
         </div>
       )}
 
