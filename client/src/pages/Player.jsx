@@ -215,7 +215,6 @@ function Player() {
                   }}
                 >
                   <div><strong>{track.name}</strong></div>
-                  <div style={{ color: '#888', fontSize: '0.9rem' }}>{track.artist}</div>
                 </div>
               ))}
               {filteredTracks.length === 0 && (

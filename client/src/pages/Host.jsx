@@ -254,15 +254,25 @@ function Host() {
 
           <div className="results-card">
             {roundResults.results.map((result, idx) => (
-              <div key={result.playerId} className="result-row">
-                <span>{idx + 1}. {result.playerName}</span>
-                <span>
-                  <span className={result.details.songCorrect ? 'correct' : 'incorrect'}>Song </span>
-                  <span className={result.details.artistCorrect ? 'correct' : 'incorrect'}>Artist </span>
-                  <span className={result.details.yearCorrect ? 'correct' : 'incorrect'}>Year </span>
-                  <span className={result.details.durationCorrect ? 'correct' : 'incorrect'}>Duration</span>
-                </span>
-                <span>{result.correctCount}/4</span>
+              <div key={result.playerId} style={{ padding: '15px', borderBottom: '1px solid rgba(255, 255, 255, 0.1)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                  <span style={{ fontWeight: 'bold', fontSize: '1.1rem' }}>{idx + 1}. {result.playerName}</span>
+                  <span style={{ fontSize: '1.2rem', color: '#1DB954' }}>{result.correctCount}/4</span>
+                </div>
+                <div style={{ fontSize: '0.9rem', color: '#b3b3b3', lineHeight: '1.6' }}>
+                  <div className={result.details.songCorrect ? 'correct' : 'incorrect'}>
+                    Song: {result.guess.songId ? roundResults.track.name : 'Not selected'}
+                  </div>
+                  <div className={result.details.artistCorrect ? 'correct' : 'incorrect'}>
+                    Artist: {result.guess.artist || 'Not answered'}
+                  </div>
+                  <div className={result.details.yearCorrect ? 'correct' : 'incorrect'}>
+                    Year: {result.guess.year || 'Not answered'}
+                  </div>
+                  <div className={result.details.durationCorrect ? 'correct' : 'incorrect'}>
+                    Duration: {result.guess.overThreeMin !== null ? (result.guess.overThreeMin ? 'Over 3 min' : 'Under 3 min') : 'Not answered'}
+                  </div>
+                </div>
               </div>
             ))}
           </div>
