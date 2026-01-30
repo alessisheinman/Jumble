@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: jumble-server
+    runtime: node
+    buildCommand: npm install
+    startCommand: node index.js
+    envVars:
+      - key: PORT
+        value: 3001
+      - key: CLIENT_URL
+        sync: false

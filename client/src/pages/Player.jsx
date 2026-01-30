@@ -13,6 +13,8 @@ function Player() {
   const [error, setError] = useState(null)
   const [tracks, setTracks] = useState([])
   const [currentRound, setCurrentRound] = useState(0)
+  const [isMyTurn, setIsMyTurn] = useState(false)
+  const [currentPlayerName, setCurrentPlayerName] = useState('')
 
   // Guess form state
   const [searchQuery, setSearchQuery] = useState('')
@@ -48,17 +50,24 @@ function Player() {
       setGameState('waiting')
     })
 
-    newSocket.on('round-start', ({ round, tracks }) => {
+    newSocket.on('round-start', ({ round, tracks, isYourTurn, currentPlayerName }) => {
       setCurrentRound(round)
-      setTracks(tracks)
-      setGameState('guessing')
+      setIsMyTurn(isYourTurn)
+      setCurrentPlayerName(currentPlayerName)
       setHasSubmitted(false)
-      // Reset form
-      setSearchQuery('')
-      setSelectedSong(null)
-      setArtistGuess('')
-      setYearGuess('')
-      setOverThreeMin(null)
+
+      if (isYourTurn) {
+        setTracks(tracks)
+        setGameState('guessing')
+        // Reset form
+        setSearchQuery('')
+        setSelectedSong(null)
+        setArtistGuess('')
+        setYearGuess('')
+        setOverThreeMin(null)
+      } else {
+        setGameState('waiting')
+      }
     })
 
     newSocket.on('guess-received', () => {
@@ -66,9 +75,9 @@ function Player() {
       setGameState('waiting')
     })
 
-    newSocket.on('round-results', ({ track, results, roundWinner, players }) => {
+    newSocket.on('round-results', ({ track, results, roundWinner, players, earnedPoint, skippedNext }) => {
       setGameState('results')
-      setRoundResults({ track, results, roundWinner })
+      setRoundResults({ track, results, roundWinner, earnedPoint, skippedNext })
       setPlayers(players)
     })
 
@@ -265,8 +274,16 @@ function Player() {
         </div>
       )}
 
-      {/* WAITING: Submitted, waiting for others */}
-      {gameState === 'waiting' && !hasSubmitted && (
+      {/* WAITING: Not your turn or submitted */}
+      {gameState === 'waiting' && !hasSubmitted && !isMyTurn && currentPlayerName && (
+        <div className="waiting">
+          <h2>Round {currentRound}</h2>
+          <p style={{ fontSize: '1.2rem', marginTop: 20 }}>It's {currentPlayerName}'s turn</p>
+          <p style={{ color: '#888', marginTop: 10 }}>Listen to the song and get ready!</p>
+        </div>
+      )}
+
+      {gameState === 'waiting' && !hasSubmitted && !currentPlayerName && (
         <div className="waiting">
           <h2>Get Ready...</h2>
           <p>Round starting soon!</p>
@@ -278,7 +295,7 @@ function Player() {
           <div className="submitted-badge" style={{ fontSize: '1.2rem', padding: '15px 30px' }}>
             ✓ Submitted!
           </div>
-          <p style={{ marginTop: 20 }}>Waiting for other players...</p>
+          <p style={{ marginTop: 20 }}>Waiting for results...</p>
         </div>
       )}
 
@@ -297,9 +314,15 @@ function Player() {
             {roundResults.track.year} • {roundResults.track.isOverThreeMin ? 'Over' : 'Under'} 3 min
           </p>
 
-          {roundResults.roundWinner && (
+          {roundResults.earnedPoint && roundResults.roundWinner && (
             <div className="winner-banner" style={{ fontSize: '1rem', padding: 15, marginTop: 20 }}>
-              ★ {roundResults.roundWinner.playerName} wins!
+              ★ {roundResults.roundWinner.playerName} earned a point! ({roundResults.roundWinner.correctCount}/4)
+              {roundResults.skippedNext && <div style={{ marginTop: '8px', fontSize: '0.85rem' }}>Perfect! Next player skipped!</div>}
+            </div>
+          )}
+          {!roundResults.earnedPoint && roundResults.roundWinner && (
+            <div style={{ background: 'rgba(255,107,107,0.2)', color: '#ff6b6b', padding: '15px', borderRadius: '12px', margin: '20px 0' }}>
+              {roundResults.roundWinner.playerName}: {roundResults.roundWinner.correctCount}/4 (need 3/4 for a point)
             </div>
           )}
 

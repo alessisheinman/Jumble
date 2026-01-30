@@ -7,85 +7,31 @@ const SOCKET_URL = import.meta.env.VITE_SERVER_URL || 'http://localhost:3001'
 // Client URL for players to join
 const CLIENT_URL = import.meta.env.VITE_CLIENT_URL || 'localhost:5173/#/play'
 
+// Hardcoded playlist ID
+const PLAYLIST_ID = '14883960123'
+
 function Host() {
-  const [searchParams] = useSearchParams()
-  const [accessToken, setAccessToken] = useState(null)
   const [socket, setSocket] = useState(null)
-  const [playlistUrl, setPlaylistUrl] = useState('')
   const [roomCode, setRoomCode] = useState(null)
   const [players, setPlayers] = useState([])
   const [gameState, setGameState] = useState('setup') // setup, lobby, playing, results, gameover
   const [currentRound, setCurrentRound] = useState(0)
+  const [currentPlayer, setCurrentPlayer] = useState(null)
   const [submissions, setSubmissions] = useState({ total: 0, submitted: 0 })
   const [roundResults, setRoundResults] = useState(null)
   const [winner, setWinner] = useState(null)
   const [error, setError] = useState(null)
   const [trackCount, setTrackCount] = useState(0)
-  const playerRef = useRef(null)
-  const deviceIdRef = useRef(null)
-
-  // Get tokens from URL on mount
-  useEffect(() => {
-    const token = searchParams.get('access_token')
-    if (token) {
-      setAccessToken(token)
-      // Clean up URL (works with HashRouter)
-      window.history.replaceState({}, document.title, window.location.pathname + '#/host')
-    }
-  }, [searchParams])
-
-  // Initialize Spotify Web Playback SDK
-  useEffect(() => {
-    if (!accessToken) return
-
-    window.onSpotifyWebPlaybackSDKReady = () => {
-      const player = new window.Spotify.Player({
-        name: 'Song Guessing Game',
-        getOAuthToken: cb => cb(accessToken),
-        volume: 0.5
-      })
-
-      player.addListener('ready', ({ device_id }) => {
-        console.log('Spotify Player Ready, device ID:', device_id)
-        deviceIdRef.current = device_id
-      })
-
-      player.addListener('not_ready', ({ device_id }) => {
-        console.log('Device has gone offline', device_id)
-      })
-
-      player.addListener('initialization_error', ({ message }) => {
-        console.error('Init error:', message)
-        setError('Failed to initialize Spotify player')
-      })
-
-      player.addListener('authentication_error', ({ message }) => {
-        console.error('Auth error:', message)
-        setError('Spotify authentication failed')
-      })
-
-      player.connect()
-      playerRef.current = player
-    }
-
-    // If SDK already loaded
-    if (window.Spotify) {
-      window.onSpotifyWebPlaybackSDKReady()
-    }
-
-    return () => {
-      if (playerRef.current) {
-        playerRef.current.disconnect()
-      }
-    }
-  }, [accessToken])
+  const audioRef = useRef(null)
 
   // Initialize Socket connection
   useEffect(() => {
-    if (!accessToken) return
-
     const newSocket = io(SOCKET_URL)
     setSocket(newSocket)
+
+    // Initialize HTML5 audio element
+    audioRef.current = new Audio()
+    audioRef.current.volume = 0.5
 
     newSocket.on('room-created', ({ roomCode, trackCount }) => {
       setRoomCode(roomCode)
@@ -105,25 +51,19 @@ function Host() {
       setGameState('playing')
     })
 
-    newSocket.on('play-track', async ({ uri, round }) => {
+    newSocket.on('play-track', ({ previewUrl, round, currentPlayer }) => {
       setCurrentRound(round)
-      setSubmissions({ total: players.length, submitted: 0 })
+      setCurrentPlayer(currentPlayer)
+      setSubmissions({ total: 1, submitted: 0 })
       setRoundResults(null)
 
-      // Play track via Spotify API
-      if (deviceIdRef.current) {
-        try {
-          await fetch(`https://api.spotify.com/v1/me/player/play?device_id=${deviceIdRef.current}`, {
-            method: 'PUT',
-            headers: {
-              'Authorization': `Bearer ${accessToken}`,
-              'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({ uris: [uri] })
-          })
-        } catch (err) {
+      // Play track preview via HTML5 audio
+      if (audioRef.current && previewUrl) {
+        audioRef.current.src = previewUrl
+        audioRef.current.play().catch(err => {
           console.error('Failed to play track:', err)
-        }
+          setError('Failed to play preview. Make sure audio is enabled.')
+        })
       }
     })
 
@@ -137,8 +77,8 @@ function Host() {
       setPlayers(players)
 
       // Pause playback
-      if (playerRef.current) {
-        playerRef.current.pause()
+      if (audioRef.current) {
+        audioRef.current.pause()
       }
     })
 
@@ -147,8 +87,8 @@ function Host() {
       setWinner(winner)
       setPlayers(players)
 
-      if (playerRef.current) {
-        playerRef.current.pause()
+      if (audioRef.current) {
+        audioRef.current.pause()
       }
     })
 
@@ -157,9 +97,13 @@ function Host() {
     })
 
     return () => {
+      if (audioRef.current) {
+        audioRef.current.pause()
+        audioRef.current = null
+      }
       newSocket.close()
     }
-  }, [accessToken])
+  }, [])
 
   // Update player count for submissions when players change
   useEffect(() => {
@@ -167,12 +111,8 @@ function Host() {
   }, [players])
 
   const handleCreateRoom = () => {
-    if (!playlistUrl.trim()) {
-      setError('Please enter a playlist URL')
-      return
-    }
     setError(null)
-    socket.emit('create-room', { accessToken, playlistUrl })
+    socket.emit('create-room', { playlistUrl: PLAYLIST_ID })
   }
 
   const handleStartGame = () => {
@@ -188,18 +128,9 @@ function Host() {
     socket.emit('next-round')
   }
 
-  if (!accessToken) {
-    return (
-      <div className="container" style={{ textAlign: 'center', marginTop: '20vh' }}>
-        <h2>Connecting to Spotify...</h2>
-        <p>If this takes too long, <a href="#/" style={{ color: '#1DB954' }}>go back</a> and try again.</p>
-      </div>
-    )
-  }
-
   return (
     <div className="container">
-      <h1>Spotify Guessing Game</h1>
+      <h1>Music Guessing Game</h1>
 
       {error && (
         <div style={{ color: '#ff6b6b', padding: 15, background: 'rgba(255,107,107,0.1)', borderRadius: 10, marginBottom: 20 }}>
@@ -207,17 +138,14 @@ function Host() {
         </div>
       )}
 
-      {/* SETUP: Enter playlist */}
+      {/* SETUP: Create room */}
       {gameState === 'setup' && (
-        <div>
-          <h2>Create a Game</h2>
-          <input
-            type="text"
-            placeholder="Paste Spotify playlist URL or ID..."
-            value={playlistUrl}
-            onChange={(e) => setPlaylistUrl(e.target.value)}
-          />
-          <button onClick={handleCreateRoom} style={{ width: '100%' }}>
+        <div style={{ textAlign: 'center' }}>
+          <h2>Ready to Play?</h2>
+          <p style={{ color: '#888', marginBottom: 30 }}>
+            6 songs loaded and ready to go!
+          </p>
+          <button onClick={handleCreateRoom} style={{ width: '100%', fontSize: '1.2rem', padding: '20px' }}>
             Create Room
           </button>
         </div>
@@ -261,14 +189,23 @@ function Host() {
       {gameState === 'playing' && (
         <div className="game-screen">
           <h2>Round {currentRound}</h2>
+
+          {currentPlayer && (
+            <div style={{ background: 'rgba(29, 185, 84, 0.2)', padding: '20px', borderRadius: '12px', marginBottom: '20px' }}>
+              <p style={{ fontSize: '1.5rem', color: '#1DB954', fontWeight: 'bold' }}>
+                {currentPlayer.name}'s Turn
+              </p>
+            </div>
+          )}
+
           <div className="now-playing">
             <p style={{ fontSize: '1.2rem' }}>Song is playing...</p>
-            <p style={{ color: '#888' }}>Players are guessing on their devices</p>
+            <p style={{ color: '#888' }}>Waiting for {currentPlayer?.name} to guess...</p>
           </div>
 
           <div style={{ margin: '30px 0' }}>
             <p style={{ fontSize: '1.5rem' }}>
-              {submissions.submitted} / {submissions.total} submitted
+              {submissions.submitted === 1 ? 'Answer submitted!' : 'Listening...'}
             </p>
           </div>
 
@@ -303,9 +240,15 @@ function Host() {
             </p>
           </div>
 
-          {roundResults.roundWinner && (
+          {roundResults.earnedPoint && roundResults.roundWinner && (
             <div className="winner-banner">
-              ★ {roundResults.roundWinner.playerName} wins the round! ({roundResults.roundWinner.correctCount}/4 correct)
+              ★ {roundResults.roundWinner.playerName} earned a point! ({roundResults.roundWinner.correctCount}/4 correct)
+              {roundResults.skippedNext && <div style={{ marginTop: '10px', fontSize: '0.9rem' }}>Perfect score! Next player skipped!</div>}
+            </div>
+          )}
+          {!roundResults.earnedPoint && roundResults.roundWinner && (
+            <div style={{ background: 'rgba(255,107,107,0.2)', color: '#ff6b6b', padding: '20px', borderRadius: '16px', margin: '20px 0', textAlign: 'center' }}>
+              {roundResults.roundWinner.playerName} got {roundResults.roundWinner.correctCount}/4 correct. Need 3/4 to earn a point!
             </div>
           )}
 

@@ -6,20 +6,32 @@ const cors = require('cors');
 
 const app = express();
 const server = http.createServer(app);
+
+// Allow CORS for both local and production
+const allowedOrigins = [
+  'http://localhost:5173',
+  'https://localhost:5173',
+  process.env.CLIENT_URL
+].filter(Boolean);
+
 const io = new Server(server, {
   cors: {
-    origin: 'http://localhost:5173',
-    methods: ['GET', 'POST']
+    origin: allowedOrigins,
+    methods: ['GET', 'POST'],
+    credentials: true
   }
 });
 
-app.use(cors());
+app.use(cors({
+  origin: allowedOrigins,
+  credentials: true
+}));
 app.use(express.json());
 
-// Spotify credentials
-const CLIENT_ID = process.env.SPOTIFY_CLIENT_ID;
-const CLIENT_SECRET = process.env.SPOTIFY_CLIENT_SECRET;
-const REDIRECT_URI = process.env.REDIRECT_URI || 'http://localhost:3001/callback';
+// Health check endpoint
+app.get('/', (req, res) => {
+  res.json({ status: 'Server is running', rooms: rooms.size });
+});
 
 // Game state storage
 const rooms = new Map();
@@ -34,131 +46,62 @@ function generateRoomCode() {
   return rooms.has(code) ? generateRoomCode() : code;
 }
 
-// ============ SPOTIFY AUTH ROUTES ============
+// ============ DEEZER API HELPERS ============
 
-app.get('/login', (req, res) => {
-  const scopes = [
-    'streaming',
-    'user-read-email',
-    'user-read-private',
-    'user-read-playback-state',
-    'user-modify-playback-state',
-    'playlist-read-private',
-    'playlist-read-collaborative'
-  ].join(' ');
-
-  const authUrl = 'https://accounts.spotify.com/authorize?' +
-    new URLSearchParams({
-      response_type: 'code',
-      client_id: CLIENT_ID,
-      scope: scopes,
-      redirect_uri: REDIRECT_URI,
-      show_dialog: true
-    }).toString();
-
-  res.redirect(authUrl);
-});
-
-app.get('/callback', async (req, res) => {
-  const { code, error } = req.query;
-
-  if (error) {
-    return res.redirect('http://localhost:5173?error=' + error);
-  }
-
+async function getPlaylistTracks(playlistId) {
   try {
-    const tokenResponse = await fetch('https://accounts.spotify.com/api/token', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-        'Authorization': 'Basic ' + Buffer.from(CLIENT_ID + ':' + CLIENT_SECRET).toString('base64')
-      },
-      body: new URLSearchParams({
-        grant_type: 'authorization_code',
-        code: code,
-        redirect_uri: REDIRECT_URI
-      })
-    });
-
-    const tokens = await tokenResponse.json();
-
-    if (tokens.error) {
-      return res.redirect('http://localhost:5173?error=' + tokens.error);
-    }
-
-    // Redirect to client with tokens
-    res.redirect('http://localhost:5173/host?' +
-      new URLSearchParams({
-        access_token: tokens.access_token,
-        refresh_token: tokens.refresh_token,
-        expires_in: tokens.expires_in
-      }).toString()
-    );
-  } catch (err) {
-    console.error('Token exchange error:', err);
-    res.redirect('http://localhost:5173?error=token_exchange_failed');
-  }
-});
-
-app.post('/refresh', async (req, res) => {
-  const { refresh_token } = req.body;
-
-  try {
-    const response = await fetch('https://accounts.spotify.com/api/token', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-        'Authorization': 'Basic ' + Buffer.from(CLIENT_ID + ':' + CLIENT_SECRET).toString('base64')
-      },
-      body: new URLSearchParams({
-        grant_type: 'refresh_token',
-        refresh_token: refresh_token
-      })
-    });
-
-    const tokens = await response.json();
-    res.json(tokens);
-  } catch (err) {
-    res.status(500).json({ error: 'Failed to refresh token' });
-  }
-});
-
-// ============ SPOTIFY API HELPERS ============
-
-async function getPlaylistTracks(accessToken, playlistId) {
-  const tracks = [];
-  let url = `https://api.spotify.com/v1/playlists/${playlistId}/tracks?limit=100`;
-
-  while (url) {
-    const response = await fetch(url, {
-      headers: { 'Authorization': `Bearer ${accessToken}` }
-    });
+    const response = await fetch(`https://api.deezer.com/playlist/${playlistId}`);
     const data = await response.json();
 
-    for (const item of data.items) {
-      if (item.track && item.track.id) {
-        tracks.push({
-          id: item.track.id,
-          uri: item.track.uri,
-          name: item.track.name,
-          artist: item.track.artists.map(a => a.name).join(', '),
-          album: item.track.album.name,
-          albumArt: item.track.album.images[0]?.url,
-          releaseDate: item.track.album.release_date,
-          durationMs: item.track.duration_ms
-        });
-      }
+    if (data.error) {
+      throw new Error(data.error.message || 'Failed to fetch playlist');
     }
 
-    url = data.next;
-  }
+    // Fetch individual track data to get original release dates
+    const trackPromises = data.tracks.data.map(async (track) => {
+      try {
+        const trackResponse = await fetch(`https://api.deezer.com/track/${track.id}`);
+        const trackData = await trackResponse.json();
 
-  return tracks;
+        return {
+          id: track.id.toString(),
+          previewUrl: track.preview,
+          name: track.title,
+          artist: track.artist.name,
+          album: track.album.title,
+          albumArt: track.album.cover_medium || track.album.cover_small,
+          // Use track's release_date (original) instead of album's release_date (remaster)
+          releaseDate: trackData.release_date || track.album.release_date || 'Unknown',
+          durationMs: track.duration * 1000 // Deezer uses seconds, convert to ms
+        };
+      } catch (err) {
+        console.error(`Error fetching track ${track.id}:`, err);
+        // Fallback to album release date if track fetch fails
+        return {
+          id: track.id.toString(),
+          previewUrl: track.preview,
+          name: track.title,
+          artist: track.artist.name,
+          album: track.album.title,
+          albumArt: track.album.cover_medium || track.album.cover_small,
+          releaseDate: track.album?.release_date || 'Unknown',
+          durationMs: track.duration * 1000
+        };
+      }
+    });
+
+    const tracks = await Promise.all(trackPromises);
+    return tracks;
+  } catch (err) {
+    console.error('Error fetching Deezer playlist:', err);
+    throw err;
+  }
 }
 
 function extractPlaylistId(input) {
   // Handle full URLs or just IDs
-  const match = input.match(/playlist\/([a-zA-Z0-9]+)/);
+  // Deezer URLs: https://www.deezer.com/playlist/908622995
+  const match = input.match(/playlist\/(\d+)/);
   return match ? match[1] : input;
 }
 
@@ -168,11 +111,11 @@ io.on('connection', (socket) => {
   console.log('Client connected:', socket.id);
 
   // Host creates a room
-  socket.on('create-room', async ({ accessToken, playlistUrl }) => {
+  socket.on('create-room', async ({ playlistUrl }) => {
     try {
       const roomCode = generateRoomCode();
       const playlistId = extractPlaylistId(playlistUrl);
-      const tracks = await getPlaylistTracks(accessToken, playlistId);
+      const tracks = await getPlaylistTracks(playlistId);
 
       if (tracks.length === 0) {
         socket.emit('error', { message: 'No tracks found in playlist' });
@@ -182,11 +125,11 @@ io.on('connection', (socket) => {
       const room = {
         code: roomCode,
         hostId: socket.id,
-        accessToken: accessToken,
         tracks: tracks,
         players: [],
         currentRound: 0,
         currentTrack: null,
+        currentPlayerIndex: 0,
         guesses: new Map(),
         scores: new Map(),
         gameStarted: false,
@@ -304,18 +247,35 @@ io.on('connection', (socket) => {
     room.roundActive = true;
     room.roundStartTime = Date.now();
 
-    // Send track URI to host for playback
+    // Get current player
+    const currentPlayer = room.players[room.currentPlayerIndex];
+
+    // Send track preview URL to host for playback
     io.to(room.hostId).emit('play-track', {
-      uri: track.uri,
-      round: room.currentRound
+      previewUrl: track.previewUrl,
+      round: room.currentRound,
+      currentPlayer: {
+        id: currentPlayer.id,
+        name: currentPlayer.name
+      }
     });
 
-    // Tell players to guess
-    room.players.forEach(player => {
-      io.to(player.id).emit('round-start', {
-        round: room.currentRound,
-        tracks: room.tracks.map(t => ({ id: t.id, name: t.name, artist: t.artist }))
-      });
+    // Tell only the current player to guess
+    io.to(currentPlayer.id).emit('round-start', {
+      round: room.currentRound,
+      tracks: room.tracks.map(t => ({ id: t.id, name: t.name, artist: t.artist })),
+      isYourTurn: true
+    });
+
+    // Tell other players to wait
+    room.players.forEach((player, idx) => {
+      if (idx !== room.currentPlayerIndex) {
+        io.to(player.id).emit('round-start', {
+          round: room.currentRound,
+          isYourTurn: false,
+          currentPlayerName: currentPlayer.name
+        });
+      }
     });
   }
 
@@ -323,6 +283,13 @@ io.on('connection', (socket) => {
   socket.on('submit-guess', ({ songId, artist, year, overThreeMin }) => {
     const room = rooms.get(socket.roomCode);
     if (!room || !room.roundActive) return;
+
+    // Only accept guess from current player
+    const currentPlayer = room.players[room.currentPlayerIndex];
+    if (socket.id !== currentPlayer.id) {
+      socket.emit('error', { message: 'Not your turn!' });
+      return;
+    }
 
     const submissionTime = Date.now() - room.roundStartTime;
 
@@ -338,18 +305,8 @@ io.on('connection', (socket) => {
 
     socket.emit('guess-received');
 
-    // Notify host of submission
-    io.to(room.hostId).emit('player-submitted', {
-      playerId: socket.id,
-      playerName: socket.playerName,
-      totalSubmitted: room.guesses.size,
-      totalPlayers: room.players.length
-    });
-
-    // Check if all players submitted
-    if (room.guesses.size === room.players.length) {
-      endRound(socket.roomCode);
-    }
+    // Automatically end the round after current player submits
+    endRound(socket.roomCode);
   });
 
   // Host ends round manually
@@ -366,9 +323,10 @@ io.on('connection', (socket) => {
     room.roundActive = false;
     const track = room.currentTrack;
     const correctYear = parseInt(track.releaseDate.substring(0, 4));
-    const isOverThreeMin = track.durationMs > 180000;
+    const isOverThreeMin = track.durationMs > 180000; // 3 minutes
 
     const results = [];
+    let skipNextPlayer = false;
 
     room.guesses.forEach((guess, playerId) => {
       let correctCount = 0;
@@ -381,11 +339,12 @@ io.on('connection', (socket) => {
       const artistCorrect = track.artist.toLowerCase().includes(guess.artist?.toLowerCase() || '');
       if (artistCorrect) correctCount++;
 
-      // Check year (exact or within 1 year for partial credit)
-      const yearCorrect = guess.year === correctYear;
+      // Check year (within ±3 years)
+      const yearDiff = Math.abs(guess.year - correctYear);
+      const yearCorrect = yearDiff <= 3;
       if (yearCorrect) correctCount++;
 
-      // Check duration
+      // Check duration (over/under 3 minutes)
       const durationCorrect = guess.overThreeMin === isOverThreeMin;
       if (durationCorrect) correctCount++;
 
@@ -404,22 +363,36 @@ io.on('connection', (socket) => {
       });
     });
 
-    // Sort by correct count (desc), then by submission time (asc)
-    results.sort((a, b) => {
-      if (b.correctCount !== a.correctCount) {
-        return b.correctCount - a.correctCount;
-      }
-      return a.submissionTime - b.submissionTime;
-    });
-
-    // Award star to winner (if they got at least 1 correct)
+    // Award point based on new rules
     let roundWinner = null;
-    if (results.length > 0 && results[0].correctCount > 0) {
-      roundWinner = results[0];
-      const player = room.players.find(p => p.id === roundWinner.playerId);
-      if (player) {
-        player.stars++;
+    let earnedPoint = false;
+
+    if (results.length > 0) {
+      const result = results[0];
+      const player = room.players.find(p => p.id === result.playerId);
+
+      // Need 3/4 correct to get a point
+      if (result.correctCount >= 3) {
+        earnedPoint = true;
+        if (player) {
+          player.stars++;
+        }
+        roundWinner = result;
+
+        // If 4/4 correct, skip next player
+        if (result.correctCount === 4) {
+          skipNextPlayer = true;
+        }
       }
+    }
+
+    // Move to next player (with skip logic)
+    if (skipNextPlayer) {
+      // Skip next player: move 2 positions
+      room.currentPlayerIndex = (room.currentPlayerIndex + 2) % room.players.length;
+    } else {
+      // Normal: move 1 position
+      room.currentPlayerIndex = (room.currentPlayerIndex + 1) % room.players.length;
     }
 
     // Send results to everyone
@@ -436,8 +409,12 @@ io.on('connection', (socket) => {
       roundWinner: roundWinner ? {
         playerId: roundWinner.playerId,
         playerName: roundWinner.playerName,
-        correctCount: roundWinner.correctCount
+        correctCount: roundWinner.correctCount,
+        earnedPoint: earnedPoint,
+        skippedNext: skipNextPlayer
       } : null,
+      earnedPoint,
+      skippedNext: skipNextPlayer,
       players: room.players
     });
   }

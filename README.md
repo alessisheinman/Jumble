@@ -1,12 +1,12 @@
-# Spotify Guessing Game
+# Jumble
 
-A Jackbox/Hitster-style multiplayer music guessing game powered by Spotify.
+A Jackbox/Hitster-style multiplayer music guessing game powered by Deezer.
 
 ## How It Works
 
-1. **Host** creates a room and connects a Spotify playlist
+1. **Host** creates a room and enters a Deezer playlist URL
 2. **Players** (up to 6) join the room using a 4-letter code on their phones
-3. A random song from the playlist plays on the host's screen
+3. A random 30-second song preview from the playlist plays on the host's screen
 4. Players guess facts about the song:
    - Song name (search from playlist)
    - Artist
@@ -18,33 +18,23 @@ A Jackbox/Hitster-style multiplayer music guessing game powered by Spotify.
 ## Requirements
 
 - Node.js 18+
-- Spotify Premium account (for the host)
+- **No API credentials needed!** Deezer API is public
 
 ## Setup
 
-### 1. Create a Spotify App
-
-1. Go to [Spotify Developer Dashboard](https://developer.spotify.com/dashboard)
-2. Create a new app
-3. Set the Redirect URI to `http://localhost:3001/callback`
-4. Note your Client ID and Client Secret
-
-### 2. Configure Environment
+### 1. Configure Environment
 
 ```bash
 cd server
 cp .env.example .env
 ```
 
-Edit `.env` with your Spotify credentials:
+The `.env` file only needs the port:
 ```
-SPOTIFY_CLIENT_ID=your_client_id
-SPOTIFY_CLIENT_SECRET=your_client_secret
-REDIRECT_URI=http://localhost:3001/callback
 PORT=3001
 ```
 
-### 3. Install Dependencies
+### 2. Install Dependencies
 
 ```bash
 # Install server dependencies
@@ -56,7 +46,7 @@ cd ../client
 npm install
 ```
 
-### 4. Run the Game
+### 3. Run the Game
 
 In two separate terminals:
 
@@ -70,24 +60,38 @@ cd client
 npm run dev
 ```
 
-### 5. Play!
+### 4. Play!
 
 1. Open `http://localhost:5173` in your browser
-2. Click "Host a Game" and log in with Spotify
-3. Paste a Spotify playlist URL
+2. Click "Host a Game"
+3. Paste a Deezer playlist URL (e.g., `https://www.deezer.com/playlist/908622995`)
+   - You can use any public Deezer playlist
+   - You don't need a Deezer account to create one - just browse public playlists
 4. Share the room code with players
 5. Players go to `http://localhost:5173/play` on their phones and enter the code
+
+## Getting a Deezer Playlist
+
+1. Go to [Deezer](https://www.deezer.com/)
+2. Browse playlists or search for a genre
+3. Copy the playlist URL from the browser address bar
+4. Paste it into the game!
+
+Example playlists to try:
+- Top Charts: `https://www.deezer.com/playlist/1313621735`
+- 80s Hits: Various public playlists available
+- Rock Classics: Various public playlists available
 
 ## Tech Stack
 
 - **Frontend**: React + Vite
 - **Backend**: Node.js + Express + Socket.io
-- **Music**: Spotify Web Playback SDK
+- **Music**: Deezer API (public, no authentication required!)
 
 ## Project Structure
 
 ```
-spotify-guessing-game/
+jumble/
 ├── client/                 # React frontend
 │   ├── src/
 │   │   ├── pages/
@@ -106,7 +110,9 @@ spotify-guessing-game/
 
 ## Notes
 
-- The host needs Spotify Premium for full song playback
-- Players don't need Spotify accounts
+- Uses 30-second previews from Deezer (perfect for quick-fire rounds!)
+- No authentication required - super easy setup
+- Players don't need Deezer accounts
 - Works best with host on a big screen and players on phones
 - For local network play, replace `localhost` with your computer's local IP
+- Choose playlists with recognizable songs (many songs have quiet intros)
