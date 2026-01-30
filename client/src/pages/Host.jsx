@@ -22,6 +22,7 @@ function Host() {
   const [winner, setWinner] = useState(null)
   const [error, setError] = useState(null)
   const [trackCount, setTrackCount] = useState(0)
+  const [loading, setLoading] = useState(false)
   const audioRef = useRef(null)
 
   // Initialize Socket connection
@@ -37,6 +38,7 @@ function Host() {
       setRoomCode(roomCode)
       setTrackCount(trackCount)
       setGameState('lobby')
+      setLoading(false)
     })
 
     newSocket.on('player-joined', ({ players }) => {
@@ -94,6 +96,7 @@ function Host() {
 
     newSocket.on('error', ({ message }) => {
       setError(message)
+      setLoading(false)
     })
 
     return () => {
@@ -112,6 +115,7 @@ function Host() {
 
   const handleCreateRoom = () => {
     setError(null)
+    setLoading(true)
     socket.emit('create-room', { playlistUrl: PLAYLIST_ID })
   }
 
@@ -145,9 +149,43 @@ function Host() {
           <p style={{ color: '#888', marginBottom: 30 }}>
             6 songs loaded and ready to go!
           </p>
-          <button onClick={handleCreateRoom} style={{ width: '100%', fontSize: '1.2rem', padding: '20px' }}>
-            Create Room
+          <button
+            onClick={handleCreateRoom}
+            disabled={loading}
+            style={{
+              width: '100%',
+              fontSize: '1.2rem',
+              padding: '20px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '10px'
+            }}
+          >
+            {loading ? (
+              <>
+                <span style={{
+                  border: '3px solid rgba(255,255,255,0.3)',
+                  borderTop: '3px solid white',
+                  borderRadius: '50%',
+                  width: '20px',
+                  height: '20px',
+                  animation: 'spin 1s linear infinite'
+                }}></span>
+                Loading...
+              </>
+            ) : (
+              'Create Room'
+            )}
           </button>
+          {loading && (
+            <style>{`
+              @keyframes spin {
+                0% { transform: rotate(0deg); }
+                100% { transform: rotate(360deg); }
+              }
+            `}</style>
+          )}
         </div>
       )}
 
