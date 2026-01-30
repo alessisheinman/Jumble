@@ -11,8 +11,11 @@ const server = http.createServer(app);
 const allowedOrigins = [
   'http://localhost:5173',
   'https://localhost:5173',
+  'https://alessisheinman.github.io',
   process.env.CLIENT_URL
 ].filter(Boolean);
+
+console.log('Allowed CORS origins:', allowedOrigins);
 
 const io = new Server(server, {
   cors: {
