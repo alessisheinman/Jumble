@@ -24,6 +24,7 @@ function Host() {
   const [trackCount, setTrackCount] = useState(0)
   const [loading, setLoading] = useState(false)
   const [volume, setVolume] = useState(50)
+  const [skipMessage, setSkipMessage] = useState(null)
   const audioRef = useRef(null)
 
   // Initialize Socket connection
@@ -95,6 +96,27 @@ function Host() {
       }
     })
 
+    newSocket.on('skip-used', ({ playerName, players }) => {
+      setPlayers(players)
+      setSkipMessage(`${playerName} used a skip! Loading new song...`)
+      setTimeout(() => setSkipMessage(null), 3000)
+
+      // Pause audio
+      if (audioRef.current) {
+        audioRef.current.pause()
+      }
+    })
+
+    newSocket.on('host-skipped-song', () => {
+      setSkipMessage('Song skipped. Loading new song...')
+      setTimeout(() => setSkipMessage(null), 3000)
+
+      // Pause audio
+      if (audioRef.current) {
+        audioRef.current.pause()
+      }
+    })
+
     newSocket.on('error', ({ message }) => {
       setError(message)
       setLoading(false)
@@ -139,6 +161,10 @@ function Host() {
     if (audioRef.current) {
       audioRef.current.volume = newVolume / 100
     }
+  }
+
+  const handleSkipSong = () => {
+    socket.emit('skip-song')
   }
 
   return (
@@ -232,6 +258,20 @@ function Host() {
         </div>
       )}
 
+      {/* Skip Message */}
+      {skipMessage && (
+        <div style={{
+          color: '#1DB954',
+          padding: 15,
+          background: 'rgba(29, 185, 84, 0.1)',
+          borderRadius: 10,
+          marginBottom: 20,
+          textAlign: 'center'
+        }}>
+          {skipMessage}
+        </div>
+      )}
+
       {/* PLAYING: Song is playing */}
       {gameState === 'playing' && (
         <div className="game-screen">
@@ -262,7 +302,12 @@ function Host() {
                     <span style={{ marginLeft: '8px', color: '#1DB954', fontSize: '0.9rem' }}>◀ Current</span>
                   )}
                 </div>
-                <div className="stars">{player.stars} pts</div>
+                <div className="stars">
+                  {player.stars} pts
+                  <div style={{ fontSize: '0.8rem', color: '#888', marginTop: '5px' }}>
+                    {player.skipsRemaining || 0} skips
+                  </div>
+                </div>
               </div>
             ))}
           </div>
@@ -304,9 +349,14 @@ function Host() {
             </p>
           </div>
 
-          <button onClick={handleEndRound}>
-            End Round
-          </button>
+          <div style={{ display: 'flex', gap: '10px', flexDirection: 'column' }}>
+            <button onClick={handleEndRound}>
+              End Round
+            </button>
+            <button onClick={handleSkipSong} className="secondary">
+              Skip Song
+            </button>
+          </div>
         </div>
       )}
 

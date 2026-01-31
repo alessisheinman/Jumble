@@ -15,6 +15,8 @@ function Player() {
   const [currentRound, setCurrentRound] = useState(0)
   const [isMyTurn, setIsMyTurn] = useState(false)
   const [currentPlayerName, setCurrentPlayerName] = useState('')
+  const [mySkipsRemaining, setMySkipsRemaining] = useState(3)
+  const [skipMessage, setSkipMessage] = useState(null)
 
   // Guess form state
   const [searchQuery, setSearchQuery] = useState('')
@@ -35,6 +37,9 @@ function Player() {
     newSocket.on('joined-room', ({ roomCode, players }) => {
       setGameState('lobby')
       setPlayers(players)
+      // Find my skips
+      const me = players.find(p => p.id === newSocket.id)
+      if (me) setMySkipsRemaining(me.skipsRemaining)
     })
 
     newSocket.on('player-joined', ({ players }) => {
@@ -47,6 +52,23 @@ function Player() {
 
     newSocket.on('game-started', () => {
       setGameState('waiting')
+    })
+
+    newSocket.on('skip-used', ({ playerName, players }) => {
+      setPlayers(players)
+      setSkipMessage(`${playerName} used a skip! New song loading...`)
+      setTimeout(() => setSkipMessage(null), 3000)
+
+      // Update my skips if it was me
+      const me = players.find(p => p.name === playerName)
+      if (me) {
+        setMySkipsRemaining(me.skipsRemaining)
+      }
+    })
+
+    newSocket.on('host-skipped-song', () => {
+      setSkipMessage('Host skipped song. New song loading...')
+      setTimeout(() => setSkipMessage(null), 3000)
     })
 
     newSocket.on('round-start', ({ round, tracks, isYourTurn, currentPlayerName }) => {
@@ -121,6 +143,23 @@ function Player() {
     })
   }
 
+  const handleUseSkip = () => {
+    if (mySkipsRemaining <= 0) {
+      setError('No skips remaining!')
+      return
+    }
+    setError(null)
+    socket.emit('use-skip')
+  }
+
+  // Update my skips when players array changes
+  useEffect(() => {
+    if (socket && players.length > 0) {
+      const me = players.find(p => p.id === socket.id)
+      if (me) setMySkipsRemaining(me.skipsRemaining)
+    }
+  }, [players, socket])
+
   // Filter songs based on search (song name only)
   const filteredTracks = tracks.filter(track =>
     track.name.toLowerCase().includes(searchQuery.toLowerCase())
@@ -181,11 +220,28 @@ function Player() {
         </div>
       )}
 
+      {/* Skip Message */}
+      {skipMessage && (
+        <div style={{
+          color: '#1DB954',
+          padding: 15,
+          background: 'rgba(29, 185, 84, 0.1)',
+          borderRadius: 10,
+          marginBottom: 20,
+          textAlign: 'center'
+        }}>
+          {skipMessage}
+        </div>
+      )}
+
       {/* GUESSING: Player makes their guess */}
       {gameState === 'guessing' && (
         <div className="guess-form">
           <h2 style={{ textAlign: 'center' }}>Round {currentRound}</h2>
-          <p style={{ textAlign: 'center', color: '#888', marginBottom: 20 }}>Listen and guess!</p>
+          <p style={{ textAlign: 'center', color: '#888', marginBottom: 10 }}>Listen and guess!</p>
+          <p style={{ textAlign: 'center', color: '#1DB954', fontSize: '0.9rem', marginBottom: 20 }}>
+            Skips remaining: {mySkipsRemaining}
+          </p>
 
           {/* Song search */}
           <label>Song Name</label>
@@ -207,7 +263,6 @@ function Player() {
                   onClick={() => {
                     setSelectedSong(track)
                     setSearchQuery(track.name)
-                    setArtistGuess(track.artist)
                   }}
                 >
                   <div><strong>{track.name}</strong></div>
@@ -260,6 +315,16 @@ function Player() {
           <button onClick={handleSubmitGuess} style={{ marginTop: 20 }}>
             Submit Guess
           </button>
+
+          {mySkipsRemaining > 0 && (
+            <button
+              onClick={handleUseSkip}
+              className="secondary"
+              style={{ marginTop: 10, width: '100%' }}
+            >
+              Use Skip ({mySkipsRemaining} remaining)
+            </button>
+          )}
         </div>
       )}
 

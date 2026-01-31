@@ -192,7 +192,8 @@ io.on('connection', (socket) => {
     const player = {
       id: socket.id,
       name: playerName,
-      stars: 0
+      stars: 0,
+      skipsRemaining: 3
     };
 
     room.players.push(player);
@@ -334,6 +335,59 @@ io.on('connection', (socket) => {
 
     // Automatically end the round after current player submits
     endRound(socket.roomCode);
+  });
+
+  // Player uses a skip
+  socket.on('use-skip', () => {
+    const room = rooms.get(socket.roomCode);
+    if (!room || !room.roundActive) return;
+
+    // Only accept skip from current player
+    const currentPlayer = room.players[room.currentPlayerIndex];
+    if (socket.id !== currentPlayer.id) {
+      socket.emit('error', { message: 'Not your turn!' });
+      return;
+    }
+
+    // Check if player has skips remaining
+    if (currentPlayer.skipsRemaining <= 0) {
+      socket.emit('error', { message: 'No skips remaining!' });
+      return;
+    }
+
+    // Deduct skip
+    currentPlayer.skipsRemaining--;
+
+    // Cancel current round without ending it
+    room.roundActive = false;
+    room.guesses.clear();
+
+    // Notify everyone that a skip was used
+    io.to(socket.roomCode).emit('skip-used', {
+      playerName: currentPlayer.name,
+      skipsRemaining: currentPlayer.skipsRemaining,
+      players: room.players
+    });
+
+    // Start a new round immediately (same player)
+    setTimeout(() => startNextRound(socket.roomCode), 2000);
+  });
+
+  // Host skips song (backdoor)
+  socket.on('skip-song', async () => {
+    const room = rooms.get(socket.roomCode);
+    if (!room || room.hostId !== socket.id) return;
+    if (!room.roundActive) return;
+
+    // Cancel current round without ending it
+    room.roundActive = false;
+    room.guesses.clear();
+
+    // Notify everyone that host skipped
+    io.to(socket.roomCode).emit('host-skipped-song');
+
+    // Start a new round immediately (same player)
+    setTimeout(() => startNextRound(socket.roomCode), 2000);
   });
 
   // Host ends round manually
