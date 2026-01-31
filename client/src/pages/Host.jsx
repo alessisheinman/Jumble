@@ -26,8 +26,11 @@ function Host() {
   const [volume, setVolume] = useState(50)
   const [skipMessage, setSkipMessage] = useState(null)
   const [skippedTrackInfo, setSkippedTrackInfo] = useState(null)
-  const [timeRemaining, setTimeRemaining] = useState(90)
+  const [timeRemaining, setTimeRemaining] = useState(60)
   const [skippedSongs, setSkippedSongs] = useState([])
+  const [playedSongs, setPlayedSongs] = useState([])
+  const [showHistory, setShowHistory] = useState(false)
+  const [currentGuessInfo, setCurrentGuessInfo] = useState(null)
   const timerIntervalRef = useRef(null)
   const audioRef = useRef(null)
 
@@ -55,18 +58,23 @@ function Host() {
       setPlayers(players)
     })
 
+    newSocket.on('player-stars-adjusted', ({ players }) => {
+      setPlayers(players)
+    })
+
     newSocket.on('game-started', () => {
       setGameState('playing')
     })
 
-    newSocket.on('play-track', ({ previewUrl, round, currentPlayer }) => {
+    newSocket.on('play-track', ({ previewUrl, round, currentPlayer, trackInfo }) => {
       setCurrentRound(round)
       setCurrentPlayer(currentPlayer)
       setSubmissions({ total: 1, submitted: 0 })
       setRoundResults(null)
+      setCurrentGuessInfo(null)
 
       // Start countdown timer
-      setTimeRemaining(90)
+      setTimeRemaining(60)
       if (timerIntervalRef.current) {
         clearInterval(timerIntervalRef.current)
       }
@@ -94,10 +102,22 @@ function Host() {
       setSubmissions({ total: totalPlayers, submitted: totalSubmitted })
     })
 
+    newSocket.on('player-submitted-guess', ({ playerName, guess, correctInfo, results }) => {
+      setCurrentGuessInfo({ playerName, guess, correctInfo, results })
+    })
+
     newSocket.on('round-results', ({ track, results, roundWinner, players, pointsEarned }) => {
       setGameState('results')
       setRoundResults({ track, results, roundWinner, pointsEarned })
       setPlayers(players)
+
+      // Add track to played songs history
+      setPlayedSongs(prev => [...prev, {
+        ...track,
+        round: currentRound,
+        results: results,
+        winner: roundWinner
+      }])
 
       // Stop timer
       if (timerIntervalRef.current) {
@@ -249,6 +269,19 @@ function Host() {
     if (window.confirm(`Remove ${playerName} from the game?`)) {
       socket.emit('host-remove-player', { playerName })
     }
+  }
+
+  const handleReplaySong = () => {
+    if (audioRef.current && audioRef.current.src) {
+      audioRef.current.currentTime = 0
+      audioRef.current.play().catch(err => {
+        console.error('Failed to replay track:', err)
+      })
+    }
+  }
+
+  const handleAdjustStars = (playerName, adjustment) => {
+    socket.emit('host-adjust-stars', { playerName, adjustment })
   }
 
   return (
@@ -509,11 +542,27 @@ function Host() {
                     {player.stars} pts • {player.skipsRemaining || 0} skips
                   </div>
                 </div>
-                {!player.isConnected && (
+                <div style={{ display: 'flex', gap: '5px', alignItems: 'center' }}>
+                  {/* Star adjustment buttons */}
                   <button
-                    onClick={() => handleRemovePlayer(player.name)}
+                    onClick={() => handleAdjustStars(player.name, 1)}
                     style={{
-                      padding: '4px 10px',
+                      padding: '4px 8px',
+                      fontSize: '0.8rem',
+                      background: '#1DB954',
+                      border: 'none',
+                      borderRadius: '4px',
+                      cursor: 'pointer',
+                      color: 'white'
+                    }}
+                    title="Add 1 star"
+                  >
+                    +
+                  </button>
+                  <button
+                    onClick={() => handleAdjustStars(player.name, -1)}
+                    style={{
+                      padding: '4px 8px',
                       fontSize: '0.8rem',
                       background: '#ff6b6b',
                       border: 'none',
@@ -521,10 +570,27 @@ function Host() {
                       cursor: 'pointer',
                       color: 'white'
                     }}
+                    title="Remove 1 star"
                   >
-                    Remove
+                    -
                   </button>
-                )}
+                  {!player.isConnected && (
+                    <button
+                      onClick={() => handleRemovePlayer(player.name)}
+                      style={{
+                        padding: '4px 10px',
+                        fontSize: '0.8rem',
+                        background: '#888',
+                        border: 'none',
+                        borderRadius: '4px',
+                        cursor: 'pointer',
+                        color: 'white'
+                      }}
+                    >
+                      Remove
+                    </button>
+                  )}
+                </div>
               </div>
             ))}
           </div>
@@ -569,7 +635,56 @@ function Host() {
             </p>
           </div>
 
+          {/* Show current guess info */}
+          {currentGuessInfo && (
+            <div style={{
+              background: 'rgba(255, 255, 255, 0.1)',
+              border: '2px solid rgba(29, 185, 84, 0.3)',
+              borderRadius: '12px',
+              padding: '20px',
+              marginBottom: '20px'
+            }}>
+              <h3 style={{ marginBottom: '15px', color: '#1DB954' }}>{currentGuessInfo.playerName}'s Answer</h3>
+              <div style={{ display: 'grid', gap: '12px' }}>
+                <div>
+                  <span style={{ color: '#888', fontSize: '0.9rem' }}>Song: </span>
+                  <span className={currentGuessInfo.results.songCorrect ? 'correct' : 'incorrect'} style={{ fontWeight: 'bold' }}>
+                    {currentGuessInfo.guess.songName}
+                  </span>
+                  {!currentGuessInfo.results.songCorrect && (
+                    <span style={{ color: '#888', marginLeft: '8px' }}>
+                      (Correct: {currentGuessInfo.correctInfo.songName})
+                    </span>
+                  )}
+                </div>
+                <div>
+                  <span style={{ color: '#888', fontSize: '0.9rem' }}>Artist: </span>
+                  <span className={currentGuessInfo.results.artistCorrect ? 'correct' : 'incorrect'} style={{ fontWeight: 'bold' }}>
+                    {currentGuessInfo.guess.artist}
+                  </span>
+                  {!currentGuessInfo.results.artistCorrect && (
+                    <span style={{ color: '#888', marginLeft: '8px' }}>
+                      (Correct: {currentGuessInfo.correctInfo.artist})
+                    </span>
+                  )}
+                </div>
+                <div>
+                  <span style={{ color: '#888', fontSize: '0.9rem' }}>Year: </span>
+                  <span className={currentGuessInfo.results.exactYear ? 'correct' : currentGuessInfo.results.yearWithin5 ? 'partial' : 'incorrect'} style={{ fontWeight: 'bold' }}>
+                    {currentGuessInfo.guess.year}
+                  </span>
+                  <span style={{ color: '#888', marginLeft: '8px' }}>
+                    (Off by {currentGuessInfo.results.yearDiff}, Correct: {currentGuessInfo.correctInfo.year})
+                  </span>
+                </div>
+              </div>
+            </div>
+          )}
+
           <div style={{ display: 'flex', gap: '10px', flexDirection: 'column' }}>
+            <button onClick={handleReplaySong} className="secondary">
+              🔄 Replay Song
+            </button>
             <button onClick={handleEndRound}>
               End Round
             </button>
@@ -707,44 +822,111 @@ function Host() {
         </div>
       )}
 
-      {/* SKIPPED SONGS SECTION - Show in playing, results, and gameover states */}
-      {(gameState === 'playing' || gameState === 'results' || gameState === 'gameover') && skippedSongs.length > 0 && (
+      {/* SONG HISTORY SECTION - Show in playing, results, and gameover states */}
+      {(gameState === 'playing' || gameState === 'results' || gameState === 'gameover') && (playedSongs.length > 0 || skippedSongs.length > 0) && (
         <div style={{
           marginTop: '30px',
-          background: 'rgba(255, 107, 107, 0.1)',
-          border: '1px solid rgba(255, 107, 107, 0.3)',
+          background: 'rgba(29, 185, 84, 0.05)',
+          border: '1px solid rgba(29, 185, 84, 0.3)',
           borderRadius: '12px',
           padding: '20px'
         }}>
-          <h3 style={{ marginBottom: '15px', color: '#ff6b6b' }}>Skipped Songs ({skippedSongs.length})</h3>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxHeight: '300px', overflowY: 'auto' }}>
-            {skippedSongs.map((song, idx) => (
-              <div key={idx} style={{
-                background: 'rgba(255, 255, 255, 0.05)',
-                borderRadius: '8px',
-                padding: '12px',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '12px'
-              }}>
-                {song.albumArt && (
-                  <img src={song.albumArt} alt={song.name} style={{
-                    width: '50px',
-                    height: '50px',
-                    borderRadius: '4px',
-                    objectFit: 'cover'
-                  }} />
-                )}
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontWeight: 'bold', marginBottom: '4px' }}>{song.name}</div>
-                  <div style={{ fontSize: '0.85rem', color: '#b3b3b3' }}>{song.artist} • {song.year}</div>
-                  <div style={{ fontSize: '0.8rem', color: song.type === 'host' ? '#ffa500' : '#ff6b6b', marginTop: '4px' }}>
-                    {song.type === 'host' ? '🎮 Host skip' : `⏭️ Skipped by ${song.skippedBy}`}
+          <button
+            onClick={() => setShowHistory(!showHistory)}
+            style={{
+              width: '100%',
+              background: 'rgba(29, 185, 84, 0.2)',
+              border: '1px solid rgba(29, 185, 84, 0.5)',
+              borderRadius: '8px',
+              padding: '12px',
+              cursor: 'pointer',
+              color: '#1DB954',
+              fontWeight: 'bold',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              fontSize: '1rem'
+            }}
+          >
+            <span>
+              📜 Song History ({playedSongs.length} played, {skippedSongs.length} skipped)
+            </span>
+            <span>{showHistory ? '▼' : '▶'}</span>
+          </button>
+
+          {showHistory && (
+            <div style={{ marginTop: '15px' }}>
+              {/* Played Songs */}
+              {playedSongs.length > 0 && (
+                <div style={{ marginBottom: '20px' }}>
+                  <h4 style={{ marginBottom: '12px', color: '#1DB954' }}>✅ Played Songs ({playedSongs.length})</h4>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxHeight: '300px', overflowY: 'auto' }}>
+                    {playedSongs.map((song, idx) => (
+                      <div key={idx} style={{
+                        background: 'rgba(255, 255, 255, 0.05)',
+                        borderRadius: '8px',
+                        padding: '12px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '12px'
+                      }}>
+                        {song.albumArt && (
+                          <img src={song.albumArt} alt={song.name} style={{
+                            width: '50px',
+                            height: '50px',
+                            borderRadius: '4px',
+                            objectFit: 'cover'
+                          }} />
+                        )}
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontWeight: 'bold', marginBottom: '4px' }}>{song.name}</div>
+                          <div style={{ fontSize: '0.85rem', color: '#b3b3b3' }}>{song.artist} • {song.year}</div>
+                          <div style={{ fontSize: '0.8rem', color: '#1DB954', marginTop: '4px' }}>
+                            Round {song.round} • {song.winner ? `⭐ ${song.winner.playerName} (+${song.winner.pointsEarned})` : 'No points awarded'}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 </div>
-              </div>
-            ))}
-          </div>
+              )}
+
+              {/* Skipped Songs */}
+              {skippedSongs.length > 0 && (
+                <div>
+                  <h4 style={{ marginBottom: '12px', color: '#ff6b6b' }}>⏭️ Skipped Songs ({skippedSongs.length})</h4>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxHeight: '300px', overflowY: 'auto' }}>
+                    {skippedSongs.map((song, idx) => (
+                      <div key={idx} style={{
+                        background: 'rgba(255, 255, 255, 0.05)',
+                        borderRadius: '8px',
+                        padding: '12px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '12px'
+                      }}>
+                        {song.albumArt && (
+                          <img src={song.albumArt} alt={song.name} style={{
+                            width: '50px',
+                            height: '50px',
+                            borderRadius: '4px',
+                            objectFit: 'cover'
+                          }} />
+                        )}
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontWeight: 'bold', marginBottom: '4px' }}>{song.name}</div>
+                          <div style={{ fontSize: '0.85rem', color: '#b3b3b3' }}>{song.artist} • {song.year}</div>
+                          <div style={{ fontSize: '0.8rem', color: song.type === 'host' ? '#ffa500' : '#ff6b6b', marginTop: '4px' }}>
+                            {song.type === 'host' ? '🎮 Host skip' : `Skipped by ${song.skippedBy}`}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
     </div>

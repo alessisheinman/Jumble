@@ -341,13 +341,13 @@ io.on('connection', (socket) => {
       clearTimeout(room.roundTimer);
     }
 
-    // Start 90 second auto-end timer
+    // Start 60 second auto-end timer
     room.roundTimer = setTimeout(() => {
       if (room.roundActive) {
-        console.log(`Round ${room.currentRound} auto-ended after 90 seconds`);
+        console.log(`Round ${room.currentRound} auto-ended after 60 seconds`);
         endRound(roomCode);
       }
-    }, 90000); // 90 seconds
+    }, 60000); // 60 seconds
 
     // Skip disconnected players - find next connected player
     let attempts = 0;
@@ -707,6 +707,36 @@ io.on('connection', (socket) => {
     });
 
     console.log(`Host removed disconnected player: ${player.name}`);
+  });
+
+  // Host adjusts player stars
+  socket.on('host-adjust-stars', ({ playerName, adjustment }) => {
+    const room = rooms.get(socket.roomCode);
+    if (!room || socket.id !== room.hostId) {
+      socket.emit('error', { message: 'Only host can adjust stars' });
+      return;
+    }
+
+    const player = room.players.find(
+      p => p.name.toLowerCase() === playerName.toLowerCase()
+    );
+
+    if (!player) {
+      socket.emit('error', { message: 'Player not found' });
+      return;
+    }
+
+    // Adjust stars (don't allow negative)
+    player.stars = Math.max(0, player.stars + adjustment);
+
+    // Notify everyone
+    io.to(socket.roomCode).emit('player-stars-adjusted', {
+      playerName: player.name,
+      newStars: player.stars,
+      players: room.players
+    });
+
+    console.log(`Host adjusted ${player.name}'s stars by ${adjustment} to ${player.stars}`);
   });
 
   // Handle disconnect

@@ -22,9 +22,10 @@ function Player() {
   const [isMuted, setIsMuted] = useState(true)
   const [isPlaying, setIsPlaying] = useState(false)
   const [volume, setVolume] = useState(50)
-  const [timeRemaining, setTimeRemaining] = useState(90)
+  const [timeRemaining, setTimeRemaining] = useState(60)
   const [submittedGuessInfo, setSubmittedGuessInfo] = useState(null)
   const [skippedSongs, setSkippedSongs] = useState([])
+  const [hasSkippedThisTurn, setHasSkippedThisTurn] = useState(false)
   const timerIntervalRef = useRef(null)
   const audioRef = useRef(null)
 
@@ -64,6 +65,10 @@ function Player() {
     })
 
     newSocket.on('player-left', ({ players }) => {
+      setPlayers(players)
+    })
+
+    newSocket.on('player-stars-adjusted', ({ players }) => {
       setPlayers(players)
     })
 
@@ -125,9 +130,10 @@ function Player() {
       setIsMyTurn(isYourTurn)
       setCurrentPlayerName(currentPlayerName)
       setHasSubmitted(false)
+      setHasSkippedThisTurn(false)
 
       // Start countdown timer
-      setTimeRemaining(90)
+      setTimeRemaining(60)
       if (timerIntervalRef.current) {
         clearInterval(timerIntervalRef.current)
       }
@@ -289,11 +295,16 @@ function Player() {
   }
 
   const handleUseSkip = () => {
+    if (hasSkippedThisTurn) {
+      setError('You can only skip once per turn!')
+      return
+    }
     if (mySkipsRemaining <= 0) {
       setError('No skips remaining!')
       return
     }
     setError(null)
+    setHasSkippedThisTurn(true)
     socket.emit('use-skip')
   }
 
@@ -656,10 +667,11 @@ function Player() {
           {mySkipsRemaining > 0 && (
             <button
               onClick={handleUseSkip}
+              disabled={hasSkippedThisTurn}
               className="secondary"
               style={{ marginTop: 10, width: '100%' }}
             >
-              Use Skip ({mySkipsRemaining} remaining)
+              {hasSkippedThisTurn ? 'Already Skipped This Turn' : `Use Skip (${mySkipsRemaining} remaining)`}
             </button>
           )}
         </div>
