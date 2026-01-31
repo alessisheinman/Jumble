@@ -25,6 +25,7 @@ function Host() {
   const [loading, setLoading] = useState(false)
   const [volume, setVolume] = useState(50)
   const [skipMessage, setSkipMessage] = useState(null)
+  const [skippedTrackInfo, setSkippedTrackInfo] = useState(null)
   const [timeRemaining, setTimeRemaining] = useState(90)
   const timerIntervalRef = useRef(null)
   const audioRef = useRef(null)
@@ -118,10 +119,16 @@ function Host() {
       }
     })
 
-    newSocket.on('skip-used', ({ playerName, players }) => {
+    newSocket.on('skip-used', ({ playerName, players, skippedTrack }) => {
       setPlayers(players)
       setSkipMessage(`${playerName} used a skip! Loading new song...`)
       setTimeout(() => setSkipMessage(null), 3000)
+
+      // Show skipped track info briefly
+      if (skippedTrack) {
+        setSkippedTrackInfo(skippedTrack)
+        setTimeout(() => setSkippedTrackInfo(null), 5000)
+      }
 
       // Stop timer
       if (timerIntervalRef.current) {
@@ -134,9 +141,15 @@ function Host() {
       }
     })
 
-    newSocket.on('host-skipped-song', () => {
+    newSocket.on('host-skipped-song', ({ skippedTrack }) => {
       setSkipMessage('Song skipped. Loading new song...')
       setTimeout(() => setSkipMessage(null), 3000)
+
+      // Show skipped track info briefly
+      if (skippedTrack) {
+        setSkippedTrackInfo(skippedTrack)
+        setTimeout(() => setSkippedTrackInfo(null), 5000)
+      }
 
       // Stop timer
       if (timerIntervalRef.current) {
@@ -304,6 +317,21 @@ function Host() {
           textAlign: 'center'
         }}>
           {skipMessage}
+        </div>
+      )}
+
+      {/* Skipped Track Info */}
+      {skippedTrackInfo && (
+        <div className="results-card" style={{ marginBottom: 20 }}>
+          <h3 style={{ marginBottom: 15, color: '#ff6b6b' }}>Skipped Song</h3>
+          {skippedTrackInfo.albumArt && (
+            <img src={skippedTrackInfo.albumArt} alt="Album art" className="album-art" style={{ width: 200, height: 200 }} />
+          )}
+          <h3 style={{ marginTop: 15 }}>{skippedTrackInfo.name}</h3>
+          <p style={{ color: '#b3b3b3' }}>{skippedTrackInfo.artist}</p>
+          <p style={{ color: '#888', marginTop: 10 }}>
+            Released in {skippedTrackInfo.year}
+          </p>
         </div>
       )}
 

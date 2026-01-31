@@ -19,6 +19,10 @@ function Player() {
   const [skipMessage, setSkipMessage] = useState(null)
   const [isMuted, setIsMuted] = useState(true)
   const [isPlaying, setIsPlaying] = useState(false)
+  const [volume, setVolume] = useState(50)
+  const [timeRemaining, setTimeRemaining] = useState(90)
+  const [submittedGuessInfo, setSubmittedGuessInfo] = useState(null)
+  const timerIntervalRef = useRef(null)
   const audioRef = useRef(null)
 
   // Guess form state
@@ -69,6 +73,11 @@ function Player() {
       setSkipMessage(`${playerName} used a skip! New song loading...`)
       setTimeout(() => setSkipMessage(null), 3000)
 
+      // Stop timer
+      if (timerIntervalRef.current) {
+        clearInterval(timerIntervalRef.current)
+      }
+
       // Pause audio
       if (audioRef.current) {
         audioRef.current.pause()
@@ -86,6 +95,11 @@ function Player() {
       setSkipMessage('Host skipped song. New song loading...')
       setTimeout(() => setSkipMessage(null), 3000)
 
+      // Stop timer
+      if (timerIntervalRef.current) {
+        clearInterval(timerIntervalRef.current)
+      }
+
       // Pause audio
       if (audioRef.current) {
         audioRef.current.pause()
@@ -98,6 +112,21 @@ function Player() {
       setIsMyTurn(isYourTurn)
       setCurrentPlayerName(currentPlayerName)
       setHasSubmitted(false)
+
+      // Start countdown timer
+      setTimeRemaining(90)
+      if (timerIntervalRef.current) {
+        clearInterval(timerIntervalRef.current)
+      }
+      timerIntervalRef.current = setInterval(() => {
+        setTimeRemaining(prev => {
+          if (prev <= 1) {
+            clearInterval(timerIntervalRef.current)
+            return 0
+          }
+          return prev - 1
+        })
+      }, 1000)
 
       // Play audio if preview URL is provided
       if (audioRef.current && previewUrl) {
@@ -129,6 +158,11 @@ function Player() {
       setHasSubmitted(true)
       setGameState('waiting')
 
+      // Stop timer
+      if (timerIntervalRef.current) {
+        clearInterval(timerIntervalRef.current)
+      }
+
       // Pause audio
       if (audioRef.current) {
         audioRef.current.pause()
@@ -136,10 +170,23 @@ function Player() {
       }
     })
 
+    newSocket.on('player-submitted-guess', ({ playerName, guess, correctInfo, results }) => {
+      setSubmittedGuessInfo({ playerName, guess, correctInfo, results })
+      // Clear after round results come in
+    })
+
     newSocket.on('round-results', ({ track, results, roundWinner, players, pointsEarned }) => {
       setGameState('results')
       setRoundResults({ track, results, roundWinner, pointsEarned })
       setPlayers(players)
+
+      // Clear guess info
+      setSubmittedGuessInfo(null)
+
+      // Stop timer
+      if (timerIntervalRef.current) {
+        clearInterval(timerIntervalRef.current)
+      }
 
       // Pause audio
       if (audioRef.current) {
@@ -164,6 +211,9 @@ function Player() {
     })
 
     return () => {
+      if (timerIntervalRef.current) {
+        clearInterval(timerIntervalRef.current)
+      }
       if (audioRef.current) {
         audioRef.current.pause()
         audioRef.current = null
@@ -226,6 +276,14 @@ function Player() {
     }
   }
 
+  const handleVolumeChange = (e) => {
+    const newVolume = parseInt(e.target.value)
+    setVolume(newVolume)
+    if (audioRef.current) {
+      audioRef.current.volume = newVolume / 100
+    }
+  }
+
   // Update my skips when players array changes
   useEffect(() => {
     if (socket && players.length > 0) {
@@ -234,15 +292,20 @@ function Player() {
     }
   }, [players, socket])
 
+  // Normalize text for search by removing special characters
+  const normalizeForSearch = (text) => {
+    return text.replace(/[^a-zA-Z0-9\s]/g, '').toLowerCase().trim()
+  }
+
   // Filter songs based on search (song name only)
   const filteredTracks = tracks.filter(track =>
-    track.name.toLowerCase().includes(searchQuery.toLowerCase())
+    normalizeForSearch(track.name).includes(normalizeForSearch(searchQuery))
   ).slice(0, 10)
 
   // Get unique artists and filter based on search
   const uniqueArtists = [...new Set(tracks.map(t => t.artist))].sort()
   const filteredArtists = uniqueArtists.filter(artist =>
-    artist.toLowerCase().includes(artistSearchQuery.toLowerCase())
+    normalizeForSearch(artist).includes(normalizeForSearch(artistSearchQuery))
   ).slice(0, 10)
 
   return (
@@ -318,27 +381,52 @@ function Player() {
       {gameState === 'guessing' && (
         <div className="guess-form">
           <h2 style={{ textAlign: 'center' }}>Round {currentRound}</h2>
+          <p style={{ textAlign: 'center', fontSize: '2rem', color: timeRemaining <= 10 ? '#ff6b6b' : '#fff', fontWeight: 'bold', marginBottom: 10 }}>
+            {Math.floor(timeRemaining / 60)}:{(timeRemaining % 60).toString().padStart(2, '0')}
+          </p>
           <p style={{ textAlign: 'center', color: '#888', marginBottom: 10 }}>Listen and guess!</p>
           <p style={{ textAlign: 'center', color: '#1DB954', fontSize: '0.9rem', marginBottom: 10 }}>
             Skips remaining: {mySkipsRemaining}
           </p>
 
           {/* Audio Controls */}
-          <div style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
-            <button
-              onClick={togglePlayPause}
-              className="secondary"
-              style={{ flex: 1 }}
-            >
-              {isPlaying ? '⏸ Pause' : '▶ Play'}
-            </button>
-            <button
-              onClick={toggleMute}
-              className="secondary"
-              style={{ flex: 1 }}
-            >
-              {isMuted ? '🔇 Unmute' : '🔊 Mute'}
-            </button>
+          <div style={{ marginBottom: '20px' }}>
+            <div style={{ display: 'flex', gap: '10px', marginBottom: !isMuted ? '15px' : '0' }}>
+              <button
+                onClick={togglePlayPause}
+                className="secondary"
+                style={{ flex: 1 }}
+              >
+                {isPlaying ? '⏸ Pause' : '▶ Play'}
+              </button>
+              <button
+                onClick={toggleMute}
+                className="secondary"
+                style={{ flex: 1 }}
+              >
+                {isMuted ? '🔇 Unmute' : '🔊 Mute'}
+              </button>
+            </div>
+
+            {/* Volume Slider - Only shown when unmuted */}
+            {!isMuted && (
+              <div style={{ marginTop: '10px' }}>
+                <label style={{ display: 'block', marginBottom: '5px', color: '#b3b3b3', fontSize: '0.9rem' }}>
+                  Volume: {volume}%
+                </label>
+                <input
+                  type="range"
+                  min="0"
+                  max="100"
+                  value={volume}
+                  onChange={handleVolumeChange}
+                  style={{
+                    width: '100%',
+                    accentColor: '#1DB954'
+                  }}
+                />
+              </div>
+            )}
           </div>
 
           {/* Song search */}
@@ -459,25 +547,84 @@ function Player() {
       {gameState === 'waiting' && !hasSubmitted && !isMyTurn && currentPlayerName && (
         <div className="waiting">
           <h2>Round {currentRound}</h2>
+          <p style={{ fontSize: '2rem', color: timeRemaining <= 10 ? '#ff6b6b' : '#fff', fontWeight: 'bold', marginTop: 20 }}>
+            {Math.floor(timeRemaining / 60)}:{(timeRemaining % 60).toString().padStart(2, '0')}
+          </p>
           <p style={{ fontSize: '1.2rem', marginTop: 20 }}>It's {currentPlayerName}'s turn</p>
           <p style={{ color: '#888', marginTop: 10 }}>Listen to the song and get ready!</p>
 
+          {/* Show submitted guess info */}
+          {submittedGuessInfo && (
+            <div style={{ marginTop: 30, textAlign: 'left', maxWidth: '400px', marginLeft: 'auto', marginRight: 'auto' }}>
+              <h3 style={{ textAlign: 'center', marginBottom: 15 }}>{submittedGuessInfo.playerName}'s Guess</h3>
+              <div style={{ background: 'rgba(255, 255, 255, 0.05)', padding: 15, borderRadius: 10 }}>
+                <div style={{ marginBottom: 10 }}>
+                  <span style={{ color: '#888' }}>Song: </span>
+                  <span className={submittedGuessInfo.results.songCorrect ? 'correct' : 'incorrect'}>
+                    {submittedGuessInfo.guess.songName}
+                  </span>
+                  {!submittedGuessInfo.results.songCorrect && (
+                    <span style={{ color: '#888' }}> (Correct: {submittedGuessInfo.correctInfo.songName})</span>
+                  )}
+                </div>
+                <div style={{ marginBottom: 10 }}>
+                  <span style={{ color: '#888' }}>Artist: </span>
+                  <span className={submittedGuessInfo.results.artistCorrect ? 'correct' : 'incorrect'}>
+                    {submittedGuessInfo.guess.artist}
+                  </span>
+                  {!submittedGuessInfo.results.artistCorrect && (
+                    <span style={{ color: '#888' }}> (Correct: {submittedGuessInfo.correctInfo.artist})</span>
+                  )}
+                </div>
+                <div>
+                  <span style={{ color: '#888' }}>Year: </span>
+                  <span className={submittedGuessInfo.results.exactYear ? 'correct' : submittedGuessInfo.results.yearWithin5 ? 'partial' : 'incorrect'}>
+                    {submittedGuessInfo.guess.year}
+                  </span>
+                  <span style={{ color: '#888' }}> (Off by {submittedGuessInfo.results.yearDiff}, Correct: {submittedGuessInfo.correctInfo.year})</span>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Audio Controls */}
-          <div style={{ display: 'flex', gap: '10px', marginTop: '20px', maxWidth: '400px', marginLeft: 'auto', marginRight: 'auto' }}>
-            <button
-              onClick={togglePlayPause}
-              className="secondary"
-              style={{ flex: 1 }}
-            >
-              {isPlaying ? '⏸ Pause' : '▶ Play'}
-            </button>
-            <button
-              onClick={toggleMute}
-              className="secondary"
-              style={{ flex: 1 }}
-            >
-              {isMuted ? '🔇 Unmute' : '🔊 Mute'}
-            </button>
+          <div style={{ marginTop: '20px', maxWidth: '400px', marginLeft: 'auto', marginRight: 'auto' }}>
+            <div style={{ display: 'flex', gap: '10px', marginBottom: !isMuted ? '15px' : '0' }}>
+              <button
+                onClick={togglePlayPause}
+                className="secondary"
+                style={{ flex: 1 }}
+              >
+                {isPlaying ? '⏸ Pause' : '▶ Play'}
+              </button>
+              <button
+                onClick={toggleMute}
+                className="secondary"
+                style={{ flex: 1 }}
+              >
+                {isMuted ? '🔇 Unmute' : '🔊 Mute'}
+              </button>
+            </div>
+
+            {/* Volume Slider - Only shown when unmuted */}
+            {!isMuted && (
+              <div style={{ marginTop: '10px' }}>
+                <label style={{ display: 'block', marginBottom: '5px', color: '#b3b3b3', fontSize: '0.9rem' }}>
+                  Volume: {volume}%
+                </label>
+                <input
+                  type="range"
+                  min="0"
+                  max="100"
+                  value={volume}
+                  onChange={handleVolumeChange}
+                  style={{
+                    width: '100%',
+                    accentColor: '#1DB954'
+                  }}
+                />
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -495,6 +642,40 @@ function Player() {
             ✓ Submitted!
           </div>
           <p style={{ marginTop: 20 }}>Waiting for results...</p>
+
+          {/* Show submitted guess info */}
+          {submittedGuessInfo && (
+            <div style={{ marginTop: 30, textAlign: 'left', maxWidth: '400px', marginLeft: 'auto', marginRight: 'auto' }}>
+              <h3 style={{ textAlign: 'center', marginBottom: 15 }}>{submittedGuessInfo.playerName}'s Guess</h3>
+              <div style={{ background: 'rgba(255, 255, 255, 0.05)', padding: 15, borderRadius: 10 }}>
+                <div style={{ marginBottom: 10 }}>
+                  <span style={{ color: '#888' }}>Song: </span>
+                  <span className={submittedGuessInfo.results.songCorrect ? 'correct' : 'incorrect'}>
+                    {submittedGuessInfo.guess.songName}
+                  </span>
+                  {!submittedGuessInfo.results.songCorrect && (
+                    <span style={{ color: '#888' }}> (Correct: {submittedGuessInfo.correctInfo.songName})</span>
+                  )}
+                </div>
+                <div style={{ marginBottom: 10 }}>
+                  <span style={{ color: '#888' }}>Artist: </span>
+                  <span className={submittedGuessInfo.results.artistCorrect ? 'correct' : 'incorrect'}>
+                    {submittedGuessInfo.guess.artist}
+                  </span>
+                  {!submittedGuessInfo.results.artistCorrect && (
+                    <span style={{ color: '#888' }}> (Correct: {submittedGuessInfo.correctInfo.artist})</span>
+                  )}
+                </div>
+                <div>
+                  <span style={{ color: '#888' }}>Year: </span>
+                  <span className={submittedGuessInfo.results.exactYear ? 'correct' : submittedGuessInfo.results.yearWithin5 ? 'partial' : 'incorrect'}>
+                    {submittedGuessInfo.guess.year}
+                  </span>
+                  <span style={{ color: '#888' }}> (Off by {submittedGuessInfo.results.yearDiff}, Correct: {submittedGuessInfo.correctInfo.year})</span>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       )}
 

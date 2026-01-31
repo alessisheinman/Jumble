@@ -349,6 +349,39 @@ io.on('connection', (socket) => {
 
     socket.emit('guess-received');
 
+    // Get correct answers
+    const track = room.currentTrack;
+    const correctYear = parseInt(track.releaseDate.substring(0, 4));
+
+    // Check answers
+    const songCorrect = songId === track.id;
+    const artistCorrect = track.artist.toLowerCase().includes(artist?.toLowerCase() || '');
+    const yearDiff = Math.abs(year - correctYear);
+    const exactYear = yearDiff === 0;
+    const yearWithin5 = yearDiff <= 5;
+
+    // Broadcast guess to all players with correct info
+    io.to(socket.roomCode).emit('player-submitted-guess', {
+      playerName: socket.playerName,
+      guess: {
+        songName: room.tracks.find(t => t.id === songId)?.name || 'Unknown',
+        artist,
+        year
+      },
+      correctInfo: {
+        songName: track.name,
+        artist: track.artist,
+        year: correctYear
+      },
+      results: {
+        songCorrect,
+        artistCorrect,
+        exactYear,
+        yearWithin5,
+        yearDiff
+      }
+    });
+
     // Clear the round timer
     if (room.roundTimer) {
       clearTimeout(room.roundTimer);
@@ -386,6 +419,10 @@ io.on('connection', (socket) => {
       room.roundTimer = null;
     }
 
+    // Get current track info before canceling
+    const skippedTrack = room.currentTrack;
+    const correctYear = skippedTrack ? parseInt(skippedTrack.releaseDate.substring(0, 4)) : null;
+
     // Cancel current round without ending it
     room.roundActive = false;
     room.guesses.clear();
@@ -394,7 +431,13 @@ io.on('connection', (socket) => {
     io.to(socket.roomCode).emit('skip-used', {
       playerName: currentPlayer.name,
       skipsRemaining: currentPlayer.skipsRemaining,
-      players: room.players
+      players: room.players,
+      skippedTrack: skippedTrack ? {
+        name: skippedTrack.name,
+        artist: skippedTrack.artist,
+        year: correctYear,
+        albumArt: skippedTrack.albumArt
+      } : null
     });
 
     // Start a new round immediately (same player)
@@ -413,12 +456,23 @@ io.on('connection', (socket) => {
       room.roundTimer = null;
     }
 
+    // Get current track info before canceling
+    const skippedTrack = room.currentTrack;
+    const correctYear = skippedTrack ? parseInt(skippedTrack.releaseDate.substring(0, 4)) : null;
+
     // Cancel current round without ending it
     room.roundActive = false;
     room.guesses.clear();
 
     // Notify everyone that host skipped
-    io.to(socket.roomCode).emit('host-skipped-song');
+    io.to(socket.roomCode).emit('host-skipped-song', {
+      skippedTrack: skippedTrack ? {
+        name: skippedTrack.name,
+        artist: skippedTrack.artist,
+        year: correctYear,
+        albumArt: skippedTrack.albumArt
+      } : null
+    });
 
     // Start a new round immediately (same player)
     setTimeout(() => startNextRound(socket.roomCode), 2000);
