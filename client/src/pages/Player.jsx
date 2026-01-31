@@ -1,12 +1,14 @@
 import { useState, useEffect, useRef } from 'react'
 import { io } from 'socket.io-client'
+import { useSearchParams } from 'react-router-dom'
 
 // Server URL - change this when deploying backend
 const SOCKET_URL = import.meta.env.VITE_SERVER_URL || 'http://localhost:3001'
 
 function Player() {
+  const [searchParams] = useSearchParams()
   const [socket, setSocket] = useState(null)
-  const [roomCode, setRoomCode] = useState('')
+  const [roomCode, setRoomCode] = useState(searchParams.get('room') || '')
   const [playerName, setPlayerName] = useState('')
   const [gameState, setGameState] = useState('join') // join, lobby, guessing, waiting, results, gameover
   const [players, setPlayers] = useState([])
@@ -22,6 +24,7 @@ function Player() {
   const [volume, setVolume] = useState(50)
   const [timeRemaining, setTimeRemaining] = useState(90)
   const [submittedGuessInfo, setSubmittedGuessInfo] = useState(null)
+  const [skippedSongs, setSkippedSongs] = useState([])
   const timerIntervalRef = useRef(null)
   const audioRef = useRef(null)
 
@@ -68,10 +71,15 @@ function Player() {
       setGameState('waiting')
     })
 
-    newSocket.on('skip-used', ({ playerName, players }) => {
+    newSocket.on('skip-used', ({ playerName, players, skippedTrack }) => {
       setPlayers(players)
       setSkipMessage(`${playerName} used a skip! New song loading...`)
       setTimeout(() => setSkipMessage(null), 3000)
+
+      // Add to skipped songs list
+      if (skippedTrack) {
+        setSkippedSongs(prev => [...prev, { ...skippedTrack, skippedBy: playerName, type: 'player' }])
+      }
 
       // Stop timer
       if (timerIntervalRef.current) {
@@ -91,9 +99,14 @@ function Player() {
       }
     })
 
-    newSocket.on('host-skipped-song', () => {
+    newSocket.on('host-skipped-song', ({ skippedTrack }) => {
       setSkipMessage('Host skipped song. New song loading...')
       setTimeout(() => setSkipMessage(null), 3000)
+
+      // Add to skipped songs list
+      if (skippedTrack) {
+        setSkippedSongs(prev => [...prev, { ...skippedTrack, skippedBy: 'Host', type: 'host' }])
+      }
 
       // Stop timer
       if (timerIntervalRef.current) {
@@ -380,6 +393,21 @@ function Player() {
       {/* LOBBY: Waiting for game to start */}
       {gameState === 'lobby' && (
         <div style={{ textAlign: 'center' }}>
+          {/* Room Code Header */}
+          <div style={{
+            background: 'rgba(29, 185, 84, 0.1)',
+            border: '1px solid rgba(29, 185, 84, 0.3)',
+            borderRadius: '8px',
+            padding: '10px 15px',
+            marginBottom: '20px',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center'
+          }}>
+            <span style={{ color: '#888', fontSize: '0.9rem' }}>Room:</span>
+            <span style={{ fontSize: '1.5rem', fontWeight: 'bold', letterSpacing: '3px', color: '#1DB954' }}>{roomCode}</span>
+          </div>
+
           <h2>You're In!</h2>
           <p style={{ color: '#888', marginBottom: 20 }}>Waiting for host to start the game...</p>
 
@@ -427,6 +455,53 @@ function Player() {
       {/* GUESSING: Player makes their guess */}
       {gameState === 'guessing' && (
         <div className="guess-form">
+          {/* Room Code Header */}
+          <div style={{
+            background: 'rgba(29, 185, 84, 0.1)',
+            border: '1px solid rgba(29, 185, 84, 0.3)',
+            borderRadius: '8px',
+            padding: '10px 15px',
+            marginBottom: '15px',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center'
+          }}>
+            <span style={{ color: '#888', fontSize: '0.9rem' }}>Room:</span>
+            <span style={{ fontSize: '1.2rem', fontWeight: 'bold', letterSpacing: '3px', color: '#1DB954' }}>{roomCode}</span>
+          </div>
+
+          {/* Player Status Header */}
+          <div style={{
+            background: 'rgba(255, 255, 255, 0.05)',
+            borderRadius: '8px',
+            padding: '12px',
+            marginBottom: '15px'
+          }}>
+            <div style={{ fontSize: '0.85rem', color: '#888', marginBottom: '8px' }}>Players:</div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+              {players.map(player => (
+                <div key={player.name} style={{
+                  background: player.name === playerName ? 'rgba(29, 185, 84, 0.3)' : 'rgba(255, 255, 255, 0.1)',
+                  border: player.name === playerName ? '1px solid #1DB954' : '1px solid transparent',
+                  borderRadius: '6px',
+                  padding: '4px 8px',
+                  fontSize: '0.75rem',
+                  opacity: player.isConnected ? 1 : 0.5,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px'
+                }}>
+                  <span>{player.name}</span>
+                  <span style={{ color: '#888' }}>({player.stars}⭐)</span>
+                  {!player.isConnected && <span style={{ color: '#ff6b6b' }}>🔴</span>}
+                </div>
+              ))}
+            </div>
+            <div style={{ fontSize: '0.85rem', color: '#1DB954', marginTop: '8px', fontWeight: 'bold' }}>
+              Your Turn!
+            </div>
+          </div>
+
           <h2 style={{ textAlign: 'center' }}>Round {currentRound}</h2>
           <p style={{ textAlign: 'center', fontSize: '2rem', color: timeRemaining <= 10 ? '#ff6b6b' : '#fff', fontWeight: 'bold', marginBottom: 10 }}>
             {Math.floor(timeRemaining / 60)}:{(timeRemaining % 60).toString().padStart(2, '0')}
@@ -593,6 +668,54 @@ function Player() {
       {/* WAITING: Not your turn or submitted */}
       {gameState === 'waiting' && !hasSubmitted && !isMyTurn && currentPlayerName && (
         <div className="waiting">
+          {/* Room Code Header */}
+          <div style={{
+            background: 'rgba(29, 185, 84, 0.1)',
+            border: '1px solid rgba(29, 185, 84, 0.3)',
+            borderRadius: '8px',
+            padding: '10px 15px',
+            marginBottom: '15px',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center'
+          }}>
+            <span style={{ color: '#888', fontSize: '0.9rem' }}>Room:</span>
+            <span style={{ fontSize: '1.2rem', fontWeight: 'bold', letterSpacing: '3px', color: '#1DB954' }}>{roomCode}</span>
+          </div>
+
+          {/* Player Status Header */}
+          <div style={{
+            background: 'rgba(255, 255, 255, 0.05)',
+            borderRadius: '8px',
+            padding: '12px',
+            marginBottom: '15px'
+          }}>
+            <div style={{ fontSize: '0.85rem', color: '#888', marginBottom: '8px' }}>Players:</div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+              {players.map(player => (
+                <div key={player.name} style={{
+                  background: player.name === currentPlayerName ? 'rgba(255, 165, 0, 0.3)' : player.name === playerName ? 'rgba(29, 185, 84, 0.3)' : 'rgba(255, 255, 255, 0.1)',
+                  border: player.name === currentPlayerName ? '1px solid #ffa500' : player.name === playerName ? '1px solid #1DB954' : '1px solid transparent',
+                  borderRadius: '6px',
+                  padding: '4px 8px',
+                  fontSize: '0.75rem',
+                  opacity: player.isConnected ? 1 : 0.5,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px'
+                }}>
+                  <span>{player.name}</span>
+                  <span style={{ color: '#888' }}>({player.stars}⭐)</span>
+                  {player.name === currentPlayerName && <span>🎯</span>}
+                  {!player.isConnected && <span style={{ color: '#ff6b6b' }}>🔴</span>}
+                </div>
+              ))}
+            </div>
+            <div style={{ fontSize: '0.85rem', color: '#ffa500', marginTop: '8px', fontWeight: 'bold' }}>
+              {currentPlayerName}'s Turn
+            </div>
+          </div>
+
           <h2>Round {currentRound}</h2>
           <p style={{ fontSize: '2rem', color: timeRemaining <= 10 ? '#ff6b6b' : '#fff', fontWeight: 'bold', marginTop: 20 }}>
             {Math.floor(timeRemaining / 60)}:{(timeRemaining % 60).toString().padStart(2, '0')}
@@ -685,6 +808,21 @@ function Player() {
 
       {gameState === 'waiting' && hasSubmitted && (
         <div className="waiting">
+          {/* Room Code Header */}
+          <div style={{
+            background: 'rgba(29, 185, 84, 0.1)',
+            border: '1px solid rgba(29, 185, 84, 0.3)',
+            borderRadius: '8px',
+            padding: '10px 15px',
+            marginBottom: '15px',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center'
+          }}>
+            <span style={{ color: '#888', fontSize: '0.9rem' }}>Room:</span>
+            <span style={{ fontSize: '1.2rem', fontWeight: 'bold', letterSpacing: '3px', color: '#1DB954' }}>{roomCode}</span>
+          </div>
+
           <div className="submitted-badge" style={{ fontSize: '1.2rem', padding: '15px 30px' }}>
             ✓ Submitted!
           </div>
@@ -729,6 +867,21 @@ function Player() {
       {/* RESULTS */}
       {gameState === 'results' && roundResults && (
         <div style={{ textAlign: 'center' }}>
+          {/* Room Code Header */}
+          <div style={{
+            background: 'rgba(29, 185, 84, 0.1)',
+            border: '1px solid rgba(29, 185, 84, 0.3)',
+            borderRadius: '8px',
+            padding: '10px 15px',
+            marginBottom: '15px',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center'
+          }}>
+            <span style={{ color: '#888', fontSize: '0.9rem' }}>Room:</span>
+            <span style={{ fontSize: '1.2rem', fontWeight: 'bold', letterSpacing: '3px', color: '#1DB954' }}>{roomCode}</span>
+          </div>
+
           <h2>Round {currentRound}</h2>
 
           {roundResults.track.albumArt && (
@@ -778,6 +931,21 @@ function Player() {
       {/* GAME OVER */}
       {gameState === 'gameover' && winner && (
         <div style={{ textAlign: 'center' }}>
+          {/* Room Code Header */}
+          <div style={{
+            background: 'rgba(29, 185, 84, 0.1)',
+            border: '1px solid rgba(29, 185, 84, 0.3)',
+            borderRadius: '8px',
+            padding: '10px 15px',
+            marginBottom: '15px',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center'
+          }}>
+            <span style={{ color: '#888', fontSize: '0.9rem' }}>Room:</span>
+            <span style={{ fontSize: '1.2rem', fontWeight: 'bold', letterSpacing: '3px', color: '#1DB954' }}>{roomCode}</span>
+          </div>
+
           <h2>Game Over!</h2>
           <div className="winner-banner">
             🏆 {winner.name} Wins! 🏆
@@ -795,6 +963,47 @@ function Player() {
           <button onClick={() => window.location.reload()} style={{ marginTop: 30 }}>
             Play Again
           </button>
+        </div>
+      )}
+
+      {/* SKIPPED SONGS SECTION - Show in guessing, waiting, results, and gameover states */}
+      {(gameState === 'guessing' || gameState === 'waiting' || gameState === 'results' || gameState === 'gameover') && skippedSongs.length > 0 && (
+        <div style={{
+          marginTop: '20px',
+          background: 'rgba(255, 107, 107, 0.1)',
+          border: '1px solid rgba(255, 107, 107, 0.3)',
+          borderRadius: '12px',
+          padding: '15px'
+        }}>
+          <h3 style={{ marginBottom: '12px', color: '#ff6b6b', fontSize: '1rem' }}>Skipped Songs ({skippedSongs.length})</h3>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '250px', overflowY: 'auto' }}>
+            {skippedSongs.map((song, idx) => (
+              <div key={idx} style={{
+                background: 'rgba(255, 255, 255, 0.05)',
+                borderRadius: '6px',
+                padding: '10px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '10px'
+              }}>
+                {song.albumArt && (
+                  <img src={song.albumArt} alt={song.name} style={{
+                    width: '40px',
+                    height: '40px',
+                    borderRadius: '4px',
+                    objectFit: 'cover'
+                  }} />
+                )}
+                <div style={{ flex: 1, fontSize: '0.85rem' }}>
+                  <div style={{ fontWeight: 'bold', marginBottom: '2px' }}>{song.name}</div>
+                  <div style={{ fontSize: '0.75rem', color: '#b3b3b3' }}>{song.artist} • {song.year}</div>
+                  <div style={{ fontSize: '0.7rem', color: song.type === 'host' ? '#ffa500' : '#ff6b6b', marginTop: '2px' }}>
+                    {song.type === 'host' ? '🎮 Host skip' : `⏭️ ${song.skippedBy}`}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       )}
     </div>

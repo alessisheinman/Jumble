@@ -27,6 +27,7 @@ function Host() {
   const [skipMessage, setSkipMessage] = useState(null)
   const [skippedTrackInfo, setSkippedTrackInfo] = useState(null)
   const [timeRemaining, setTimeRemaining] = useState(90)
+  const [skippedSongs, setSkippedSongs] = useState([])
   const timerIntervalRef = useRef(null)
   const audioRef = useRef(null)
 
@@ -124,8 +125,9 @@ function Host() {
       setSkipMessage(`${playerName} used a skip! Loading new song...`)
       setTimeout(() => setSkipMessage(null), 3000)
 
-      // Show skipped track info briefly
+      // Add to skipped songs list
       if (skippedTrack) {
+        setSkippedSongs(prev => [...prev, { ...skippedTrack, skippedBy: playerName, type: 'player' }])
         setSkippedTrackInfo(skippedTrack)
         setTimeout(() => setSkippedTrackInfo(null), 5000)
       }
@@ -145,8 +147,9 @@ function Host() {
       setSkipMessage('Song skipped. Loading new song...')
       setTimeout(() => setSkipMessage(null), 3000)
 
-      // Show skipped track info briefly
+      // Add to skipped songs list
       if (skippedTrack) {
+        setSkippedSongs(prev => [...prev, { ...skippedTrack, skippedBy: 'Host', type: 'host' }])
         setSkippedTrackInfo(skippedTrack)
         setTimeout(() => setSkippedTrackInfo(null), 5000)
       }
@@ -311,13 +314,62 @@ function Host() {
           <h2>Room Code</h2>
           <div className="room-code">{roomCode}</div>
           <p style={{ color: '#888', marginBottom: 20 }}>
-            Players join at <strong>{CLIENT_URL}</strong>
-          </p>
-          <p style={{ color: '#888', marginBottom: 20 }}>
             {trackCount} songs loaded
           </p>
 
-          <h3 style={{ marginTop: 30, marginBottom: 15 }}>Players ({players.length}/6)</h3>
+          {/* Shareable Link Section */}
+          <div style={{
+            background: 'rgba(29, 185, 84, 0.1)',
+            border: '2px solid rgba(29, 185, 84, 0.3)',
+            borderRadius: '12px',
+            padding: '20px',
+            marginBottom: '30px'
+          }}>
+            <h3 style={{ marginBottom: '15px', color: '#1DB954' }}>Share with Players</h3>
+            <div style={{
+              background: 'rgba(255, 255, 255, 0.05)',
+              padding: '12px',
+              borderRadius: '8px',
+              marginBottom: '15px',
+              wordBreak: 'break-all',
+              fontSize: '0.9rem',
+              color: '#b3b3b3'
+            }}>
+              {window.location.protocol}//{window.location.host}/#/play?room={roomCode}
+            </div>
+            <div style={{ display: 'flex', gap: '10px', justifyContent: 'center' }}>
+              <button
+                onClick={() => {
+                  const url = `${window.location.protocol}//${window.location.host}/#/play?room=${roomCode}`
+                  navigator.clipboard.writeText(url).then(() => {
+                    alert('Link copied to clipboard!')
+                  })
+                }}
+                style={{ flex: 1, maxWidth: '200px' }}
+              >
+                📋 Copy Link
+              </button>
+              <button
+                onClick={() => {
+                  const url = `${window.location.protocol}//${window.location.host}/#/play?room=${roomCode}`
+                  const text = `Join my music guessing game! Room code: ${roomCode}\n${url}`
+                  if (navigator.share) {
+                    navigator.share({ title: 'Join My Game', text })
+                  } else {
+                    navigator.clipboard.writeText(text).then(() => {
+                      alert('Share text copied to clipboard!')
+                    })
+                  }
+                }}
+                className="secondary"
+                style={{ flex: 1, maxWidth: '200px' }}
+              >
+                📤 Share
+              </button>
+            </div>
+          </div>
+
+          <h3 style={{ marginTop: 30, marginBottom: 15 }}>Players ({players.length}/10)</h3>
           <div className="players-list" style={{ justifyContent: 'center' }}>
             {players.map(player => (
               <div
@@ -402,6 +454,21 @@ function Host() {
       {/* PLAYING: Song is playing */}
       {gameState === 'playing' && (
         <div className="game-screen">
+          {/* Room Code Header */}
+          <div style={{
+            background: 'rgba(29, 185, 84, 0.1)',
+            border: '1px solid rgba(29, 185, 84, 0.3)',
+            borderRadius: '8px',
+            padding: '10px 15px',
+            marginBottom: '20px',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center'
+          }}>
+            <span style={{ color: '#888', fontSize: '0.9rem' }}>Room Code:</span>
+            <span style={{ fontSize: '1.5rem', fontWeight: 'bold', letterSpacing: '3px', color: '#1DB954' }}>{roomCode}</span>
+          </div>
+
           <h2>Round {currentRound}</h2>
 
           {/* Player List - Always Visible */}
@@ -516,6 +583,21 @@ function Host() {
       {/* RESULTS: Show round results */}
       {gameState === 'results' && roundResults && (
         <div className="game-screen">
+          {/* Room Code Header */}
+          <div style={{
+            background: 'rgba(29, 185, 84, 0.1)',
+            border: '1px solid rgba(29, 185, 84, 0.3)',
+            borderRadius: '8px',
+            padding: '10px 15px',
+            marginBottom: '20px',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center'
+          }}>
+            <span style={{ color: '#888', fontSize: '0.9rem' }}>Room Code:</span>
+            <span style={{ fontSize: '1.5rem', fontWeight: 'bold', letterSpacing: '3px', color: '#1DB954' }}>{roomCode}</span>
+          </div>
+
           <h2>Round {currentRound} Results</h2>
 
           <div className="results-card">
@@ -590,6 +672,21 @@ function Host() {
       {/* GAME OVER */}
       {gameState === 'gameover' && winner && (
         <div className="game-screen">
+          {/* Room Code Header */}
+          <div style={{
+            background: 'rgba(29, 185, 84, 0.1)',
+            border: '1px solid rgba(29, 185, 84, 0.3)',
+            borderRadius: '8px',
+            padding: '10px 15px',
+            marginBottom: '20px',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center'
+          }}>
+            <span style={{ color: '#888', fontSize: '0.9rem' }}>Room Code:</span>
+            <span style={{ fontSize: '1.5rem', fontWeight: 'bold', letterSpacing: '3px', color: '#1DB954' }}>{roomCode}</span>
+          </div>
+
           <h2>Game Over!</h2>
           <div className="winner-banner" style={{ fontSize: '2rem' }}>
             🏆 {winner.name} Wins! 🏆
@@ -607,6 +704,47 @@ function Host() {
           <button onClick={() => window.location.href = '#/'} style={{ marginTop: 30 }}>
             Play Again
           </button>
+        </div>
+      )}
+
+      {/* SKIPPED SONGS SECTION - Show in playing, results, and gameover states */}
+      {(gameState === 'playing' || gameState === 'results' || gameState === 'gameover') && skippedSongs.length > 0 && (
+        <div style={{
+          marginTop: '30px',
+          background: 'rgba(255, 107, 107, 0.1)',
+          border: '1px solid rgba(255, 107, 107, 0.3)',
+          borderRadius: '12px',
+          padding: '20px'
+        }}>
+          <h3 style={{ marginBottom: '15px', color: '#ff6b6b' }}>Skipped Songs ({skippedSongs.length})</h3>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxHeight: '300px', overflowY: 'auto' }}>
+            {skippedSongs.map((song, idx) => (
+              <div key={idx} style={{
+                background: 'rgba(255, 255, 255, 0.05)',
+                borderRadius: '8px',
+                padding: '12px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '12px'
+              }}>
+                {song.albumArt && (
+                  <img src={song.albumArt} alt={song.name} style={{
+                    width: '50px',
+                    height: '50px',
+                    borderRadius: '4px',
+                    objectFit: 'cover'
+                  }} />
+                )}
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontWeight: 'bold', marginBottom: '4px' }}>{song.name}</div>
+                  <div style={{ fontSize: '0.85rem', color: '#b3b3b3' }}>{song.artist} • {song.year}</div>
+                  <div style={{ fontSize: '0.8rem', color: song.type === 'host' ? '#ffa500' : '#ff6b6b', marginTop: '4px' }}>
+                    {song.type === 'host' ? '🎮 Host skip' : `⏭️ Skipped by ${song.skippedBy}`}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       )}
     </div>
