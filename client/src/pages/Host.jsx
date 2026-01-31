@@ -162,6 +162,33 @@ function Host() {
       }
     })
 
+    newSocket.on('player-disconnected', ({ playerName, players }) => {
+      setPlayers(players)
+      console.log(`${playerName} disconnected`)
+    })
+
+    newSocket.on('player-reconnected', ({ playerName, players }) => {
+      setPlayers(players)
+      console.log(`${playerName} reconnected`)
+    })
+
+    newSocket.on('player-disconnected-during-turn', ({ playerName, players }) => {
+      setPlayers(players)
+      setSkipMessage(`${playerName} disconnected during turn - skipping`)
+      setTimeout(() => setSkipMessage(null), 3000)
+
+      if (timerIntervalRef.current) {
+        clearInterval(timerIntervalRef.current)
+      }
+      if (audioRef.current) {
+        audioRef.current.pause()
+      }
+    })
+
+    newSocket.on('player-removed', ({ playerName, players }) => {
+      setPlayers(players)
+    })
+
     newSocket.on('error', ({ message }) => {
       setError(message)
       setLoading(false)
@@ -213,6 +240,12 @@ function Host() {
 
   const handleSkipSong = () => {
     socket.emit('skip-song')
+  }
+
+  const handleRemovePlayer = (playerName) => {
+    if (window.confirm(`Remove ${playerName} from the game?`)) {
+      socket.emit('host-remove-player', { playerName })
+    }
   }
 
   return (
@@ -287,8 +320,39 @@ function Host() {
           <h3 style={{ marginTop: 30, marginBottom: 15 }}>Players ({players.length}/6)</h3>
           <div className="players-list" style={{ justifyContent: 'center' }}>
             {players.map(player => (
-              <div key={player.id} className="player-tag">
-                {player.name}
+              <div
+                key={player.name}
+                className="player-tag"
+                style={{
+                  opacity: player.isConnected ? 1 : 0.5,
+                  background: player.isConnected
+                    ? 'rgba(29, 185, 84, 0.2)'
+                    : 'rgba(255, 107, 107, 0.2)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '10px'
+                }}
+              >
+                <span>
+                  {player.name}
+                  {!player.isConnected && ' 🔴'}
+                </span>
+                {!player.isConnected && (
+                  <button
+                    onClick={() => handleRemovePlayer(player.name)}
+                    style={{
+                      padding: '2px 8px',
+                      fontSize: '0.75rem',
+                      background: '#ff6b6b',
+                      border: 'none',
+                      borderRadius: '4px',
+                      cursor: 'pointer',
+                      color: 'white'
+                    }}
+                  >
+                    Remove
+                  </button>
+                )}
               </div>
             ))}
             {players.length === 0 && (
@@ -344,33 +408,56 @@ function Host() {
           <div className="scoreboard" style={{ marginBottom: 30 }}>
             {players.map(player => (
               <div
-                key={player.id}
+                key={player.name}
                 className="score-card"
                 style={{
-                  background: currentPlayer && player.id === currentPlayer.id
+                  background: currentPlayer && player.name === currentPlayer.name
                     ? 'rgba(29, 185, 84, 0.3)'
                     : 'rgba(255, 255, 255, 0.05)',
-                  border: currentPlayer && player.id === currentPlayer.id
+                  border: currentPlayer && player.name === currentPlayer.name
                     ? '2px solid #1DB954'
                     : '2px solid transparent',
-                  transform: currentPlayer && player.id === currentPlayer.id
-                    ? 'scale(1.05)'
-                    : 'scale(1)',
+                  opacity: player.isConnected ? 1 : 0.6,
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
                   transition: 'all 0.3s ease'
                 }}
               >
-                <div className="name">
-                  {player.name}
-                  {currentPlayer && player.id === currentPlayer.id && (
-                    <span style={{ marginLeft: '8px', color: '#1DB954', fontSize: '0.9rem' }}>◀ Current</span>
-                  )}
-                </div>
-                <div className="stars">
-                  {player.stars} pts
-                  <div style={{ fontSize: '0.8rem', color: '#888', marginTop: '5px' }}>
-                    {player.skipsRemaining || 0} skips
+                <div style={{ flex: 1 }}>
+                  <div className="name">
+                    {player.name}
+                    {currentPlayer && player.name === currentPlayer.name && ' ◀'}
+                    {!player.isConnected && (
+                      <span style={{
+                        marginLeft: '8px',
+                        fontSize: '0.75rem',
+                        color: '#ff6b6b'
+                      }}>
+                        disconnected
+                      </span>
+                    )}
+                  </div>
+                  <div className="stars">
+                    {player.stars} pts • {player.skipsRemaining || 0} skips
                   </div>
                 </div>
+                {!player.isConnected && (
+                  <button
+                    onClick={() => handleRemovePlayer(player.name)}
+                    style={{
+                      padding: '4px 10px',
+                      fontSize: '0.8rem',
+                      background: '#ff6b6b',
+                      border: 'none',
+                      borderRadius: '4px',
+                      cursor: 'pointer',
+                      color: 'white'
+                    }}
+                  >
+                    Remove
+                  </button>
+                )}
               </div>
             ))}
           </div>
@@ -480,8 +567,15 @@ function Host() {
 
           <div className="scoreboard">
             {players.map(player => (
-              <div key={player.id} className="score-card">
-                <div className="name">{player.name}</div>
+              <div
+                key={player.name}
+                className="score-card"
+                style={{ opacity: player.isConnected ? 1 : 0.6 }}
+              >
+                <div className="name">
+                  {player.name}
+                  {!player.isConnected && ' (disconnected)'}
+                </div>
                 <div className="stars">{player.stars} pts</div>
               </div>
             ))}

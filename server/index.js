@@ -185,6 +185,64 @@ io.on('connection', (socket) => {
       return;
     }
 
+    // Check if player name already exists in room (case-insensitive)
+    const existingPlayer = room.players.find(
+      p => p.name.toLowerCase() === playerName.toLowerCase()
+    );
+
+    if (existingPlayer) {
+      if (existingPlayer.isConnected) {
+        // Kick the old connected player
+        io.to(existingPlayer.id).emit('kicked-by-rejoin', {
+          message: 'Someone joined with your name'
+        });
+      }
+
+      // Update existing player with new socket (works for both connected and disconnected)
+      existingPlayer.id = socket.id;
+      existingPlayer.isConnected = true;
+
+      socket.join(roomCode.toUpperCase());
+      socket.roomCode = roomCode.toUpperCase();
+      socket.playerName = existingPlayer.name;
+
+      // Send rejoined state
+      socket.emit('rejoined-room', {
+        roomCode: roomCode.toUpperCase(),
+        players: room.players,
+        gameState: room.gameStarted ? 'playing' : 'lobby',
+        currentRound: room.currentRound || 0,
+        myPlayerData: {
+          name: existingPlayer.name,
+          stars: existingPlayer.stars,
+          skipsRemaining: existingPlayer.skipsRemaining
+        }
+      });
+
+      // If game in progress, send current round info
+      if (room.gameStarted && room.roundActive) {
+        const currentPlayer = room.players[room.currentPlayerIndex];
+        const isMyTurn = currentPlayer.name.toLowerCase() === existingPlayer.name.toLowerCase();
+
+        socket.emit('round-start', {
+          round: room.currentRound,
+          tracks: room.tracks.map(t => ({ id: t.id, name: t.name, artist: t.artist })),
+          isYourTurn: isMyTurn,
+          currentPlayerName: currentPlayer.name,
+          previewUrl: room.currentTrack?.previewUrl
+        });
+      }
+
+      // Notify everyone
+      io.to(roomCode.toUpperCase()).emit('player-reconnected', {
+        playerName: existingPlayer.name,
+        players: room.players
+      });
+
+      console.log(`${existingPlayer.name} rejoined room ${roomCode.toUpperCase()}`);
+      return; // Don't create new player
+    }
+
     if (room.gameStarted) {
       socket.emit('error', { message: 'Game already in progress' });
       return;
@@ -194,7 +252,8 @@ io.on('connection', (socket) => {
       id: socket.id,
       name: playerName,
       stars: 0,
-      skipsRemaining: 3
+      skipsRemaining: 3,
+      isConnected: true
     };
 
     room.players.push(player);
@@ -290,8 +349,29 @@ io.on('connection', (socket) => {
       }
     }, 90000); // 90 seconds
 
-    // Get current player
-    const currentPlayer = room.players[room.currentPlayerIndex];
+    // Skip disconnected players - find next connected player
+    let attempts = 0;
+    let currentPlayer = room.players[room.currentPlayerIndex];
+
+    while (!currentPlayer.isConnected && attempts < room.players.length) {
+      console.log(`Skipping ${currentPlayer.name} - disconnected`);
+      room.currentPlayerIndex = (room.currentPlayerIndex + 1) % room.players.length;
+      currentPlayer = room.players[room.currentPlayerIndex];
+      attempts++;
+    }
+
+    // If all players disconnected, pause game
+    if (!currentPlayer.isConnected) {
+      console.log('All players disconnected - pausing game');
+      room.roundActive = false;
+      if (room.roundTimer) {
+        clearTimeout(room.roundTimer);
+      }
+      io.to(roomCode).emit('game-paused', {
+        reason: 'All players disconnected'
+      });
+      return;
+    }
 
     // Send track preview URL to host for playback
     io.to(room.hostId).emit('play-track', {
@@ -588,6 +668,47 @@ io.on('connection', (socket) => {
     await startNextRound(socket.roomCode);
   });
 
+  // Host removes a disconnected player
+  socket.on('host-remove-player', ({ playerName }) => {
+    const room = rooms.get(socket.roomCode);
+    if (!room || socket.id !== room.hostId) {
+      socket.emit('error', { message: 'Only host can remove players' });
+      return;
+    }
+
+    const playerIndex = room.players.findIndex(
+      p => p.name.toLowerCase() === playerName.toLowerCase()
+    );
+
+    if (playerIndex === -1) {
+      socket.emit('error', { message: 'Player not found' });
+      return;
+    }
+
+    const player = room.players[playerIndex];
+
+    if (player.isConnected) {
+      socket.emit('error', { message: 'Cannot remove connected player' });
+      return;
+    }
+
+    // Remove from array
+    room.players.splice(playerIndex, 1);
+
+    // Adjust currentPlayerIndex if needed
+    if (room.currentPlayerIndex >= playerIndex && room.currentPlayerIndex > 0) {
+      room.currentPlayerIndex--;
+    }
+
+    // Notify everyone
+    io.to(socket.roomCode).emit('player-removed', {
+      playerName: player.name,
+      players: room.players
+    });
+
+    console.log(`Host removed disconnected player: ${player.name}`);
+  });
+
   // Handle disconnect
   socket.on('disconnect', () => {
     const room = rooms.get(socket.roomCode);
@@ -602,11 +723,49 @@ io.on('connection', (socket) => {
       io.to(socket.roomCode).emit('host-disconnected');
       rooms.delete(socket.roomCode);
     } else {
-      // Player left
-      room.players = room.players.filter(p => p.id !== socket.id);
-      io.to(socket.roomCode).emit('player-left', {
-        players: room.players
-      });
+      // Player disconnected - mark as disconnected, DON'T remove
+      const player = room.players.find(p => p.id === socket.id);
+      if (player) {
+        player.isConnected = false;
+
+        // Check if it's their turn - if so, skip
+        const currentPlayer = room.players[room.currentPlayerIndex];
+        if (currentPlayer && currentPlayer.id === socket.id && room.roundActive) {
+          console.log(`${player.name} disconnected during their turn - auto-skipping`);
+
+          // Clear timer
+          if (room.roundTimer) {
+            clearTimeout(room.roundTimer);
+            room.roundTimer = null;
+          }
+
+          // Cancel round
+          room.roundActive = false;
+          room.guesses.clear();
+
+          // Move to next player
+          room.currentPlayerIndex = (room.currentPlayerIndex + 1) % room.players.length;
+
+          // Notify everyone
+          io.to(socket.roomCode).emit('player-disconnected-during-turn', {
+            playerName: player.name,
+            players: room.players
+          });
+
+          // Start next round after brief delay
+          setTimeout(() => {
+            if (rooms.has(socket.roomCode)) {
+              startNextRound(socket.roomCode);
+            }
+          }, 2000);
+        } else {
+          // Regular disconnect - just notify
+          io.to(socket.roomCode).emit('player-disconnected', {
+            playerName: player.name,
+            players: room.players
+          });
+        }
+      }
     }
   });
 });

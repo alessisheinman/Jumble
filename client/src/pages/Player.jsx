@@ -201,6 +201,37 @@ function Player() {
       setPlayers(players)
     })
 
+    newSocket.on('rejoined-room', ({ roomCode, players, gameState, currentRound, myPlayerData }) => {
+      console.log('Successfully rejoined!')
+      setGameState(gameState === 'playing' ? 'waiting' : 'lobby')
+      setPlayers(players)
+      setCurrentRound(currentRound)
+      setMySkipsRemaining(myPlayerData.skipsRemaining)
+    })
+
+    newSocket.on('player-disconnected', ({ playerName, players }) => {
+      setPlayers(players)
+    })
+
+    newSocket.on('player-reconnected', ({ playerName, players }) => {
+      setPlayers(players)
+    })
+
+    newSocket.on('player-disconnected-during-turn', ({ playerName, players }) => {
+      setPlayers(players)
+      setSkipMessage(`${playerName} disconnected - skipping to next player`)
+      setTimeout(() => setSkipMessage(null), 3000)
+    })
+
+    newSocket.on('kicked-by-rejoin', ({ message }) => {
+      setError(message)
+      setGameState('join')
+    })
+
+    newSocket.on('player-removed', ({ playerName, players }) => {
+      setPlayers(players)
+    })
+
     newSocket.on('host-disconnected', () => {
       setError('Host disconnected. Game ended.')
       setGameState('join')
@@ -354,9 +385,25 @@ function Player() {
 
           <div className="players-list" style={{ justifyContent: 'center' }}>
             {players.map(player => (
-              <div key={player.id} className="player-tag">
+              <div
+                key={player.name}
+                className="player-tag"
+                style={{ opacity: player.isConnected ? 1 : 0.5 }}
+              >
                 {player.name}
                 {player.name === playerName && ' (you)'}
+                {!player.isConnected && (
+                  <span style={{
+                    marginLeft: '8px',
+                    fontSize: '0.75rem',
+                    color: '#ff6b6b',
+                    background: 'rgba(255,107,107,0.2)',
+                    padding: '2px 6px',
+                    borderRadius: '4px'
+                  }}>
+                    disconnected
+                  </span>
+                )}
               </div>
             ))}
           </div>
@@ -708,8 +755,15 @@ function Player() {
 
           <div className="scoreboard" style={{ marginTop: 20 }}>
             {players.map(player => (
-              <div key={player.id} className="score-card">
-                <div className="name">{player.name}</div>
+              <div
+                key={player.name}
+                className="score-card"
+                style={{ opacity: player.isConnected ? 1 : 0.6 }}
+              >
+                <div className="name">
+                  {player.name}
+                  {!player.isConnected && ' (disconnected)'}
+                </div>
                 <div className="stars" style={{ fontSize: '1rem' }}>
                   {player.stars} pts
                 </div>
