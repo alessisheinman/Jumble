@@ -23,6 +23,7 @@ function Host() {
   const [error, setError] = useState(null)
   const [trackCount, setTrackCount] = useState(0)
   const [loading, setLoading] = useState(false)
+  const [volume, setVolume] = useState(50)
   const audioRef = useRef(null)
 
   // Initialize Socket connection
@@ -130,6 +131,14 @@ function Host() {
   const handleNextRound = () => {
     setGameState('playing')
     socket.emit('next-round')
+  }
+
+  const handleVolumeChange = (e) => {
+    const newVolume = parseInt(e.target.value)
+    setVolume(newVolume)
+    if (audioRef.current) {
+      audioRef.current.volume = newVolume / 100
+    }
   }
 
   return (
@@ -253,7 +262,7 @@ function Host() {
                     <span style={{ marginLeft: '8px', color: '#1DB954', fontSize: '0.9rem' }}>◀ Current</span>
                   )}
                 </div>
-                <div className="stars">{'★'.repeat(player.stars)}{'☆'.repeat(10 - player.stars)}</div>
+                <div className="stars">{player.stars} pts</div>
               </div>
             ))}
           </div>
@@ -269,6 +278,24 @@ function Host() {
           <div className="now-playing">
             <p style={{ fontSize: '1.2rem' }}>Song is playing...</p>
             <p style={{ color: '#888' }}>Waiting for {currentPlayer?.name} to guess...</p>
+
+            {/* Volume Control */}
+            <div style={{ marginTop: '20px', width: '100%', maxWidth: '300px' }}>
+              <label style={{ display: 'block', marginBottom: '10px', color: '#b3b3b3', fontSize: '0.9rem' }}>
+                Volume: {volume}%
+              </label>
+              <input
+                type="range"
+                min="0"
+                max="100"
+                value={volume}
+                onChange={handleVolumeChange}
+                style={{
+                  width: '100%',
+                  accentColor: '#1DB954'
+                }}
+              />
+            </div>
           </div>
 
           <div style={{ margin: '30px 0' }}>
@@ -339,7 +366,7 @@ function Host() {
             {players.map(player => (
               <div key={player.id} className="score-card">
                 <div className="name">{player.name}</div>
-                <div className="stars">{'★'.repeat(player.stars)}{'☆'.repeat(10 - player.stars)}</div>
+                <div className="stars">{player.stars} pts</div>
               </div>
             ))}
           </div>
@@ -362,7 +389,7 @@ function Host() {
             {players.sort((a, b) => b.stars - a.stars).map((player, idx) => (
               <div key={player.id} className="score-card">
                 <div className="name">{idx + 1}. {player.name}</div>
-                <div className="stars">{player.stars} ★</div>
+                <div className="stars">{player.stars} pts</div>
               </div>
             ))}
           </div>

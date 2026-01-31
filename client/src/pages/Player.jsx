@@ -121,10 +121,9 @@ function Player() {
     })
   }
 
-  // Filter songs based on search
+  // Filter songs based on search (song name only)
   const filteredTracks = tracks.filter(track =>
-    track.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    track.artist.toLowerCase().includes(searchQuery.toLowerCase())
+    track.name.toLowerCase().includes(searchQuery.toLowerCase())
   ).slice(0, 10)
 
   return (
@@ -321,7 +320,7 @@ function Player() {
               <div key={player.id} className="score-card">
                 <div className="name">{player.name}</div>
                 <div className="stars" style={{ fontSize: '1rem' }}>
-                  {player.stars} ★
+                  {player.stars} pts
                 </div>
               </div>
             ))}
@@ -343,7 +342,7 @@ function Player() {
             {players.sort((a, b) => b.stars - a.stars).map((player, idx) => (
               <div key={player.id} className="score-card">
                 <div className="name">{idx + 1}. {player.name}</div>
-                <div className="stars">{player.stars} ★</div>
+                <div className="stars">{player.stars} pts</div>
               </div>
             ))}
           </div>
