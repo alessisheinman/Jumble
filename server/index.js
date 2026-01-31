@@ -52,11 +52,11 @@ function generateRoomCode() {
   return rooms.has(code) ? generateRoomCode() : code;
 }
 
-// ============ DEEZER API HELPERS ============
+// ============ SONG DATA HELPERS ============
 
-async function loadTracksFromCSV() {
+// Load all songs from CSV immediately (no API calls)
+function loadTracksFromCSV() {
   try {
-    // Read CSV file
     const csvPath = path.join(__dirname, 'songs_data.csv');
     const csvData = fs.readFileSync(csvPath, 'utf-8');
     const records = parse(csvData, {
@@ -64,51 +64,56 @@ async function loadTracksFromCSV() {
       skip_empty_lines: true
     });
 
-    console.log(`Loaded ${records.length} songs from CSV`);
+    console.log(`✅ Loaded ${records.length} songs from CSV`);
 
-    // Fetch preview URLs and metadata from Deezer API for each track
-    const trackPromises = records.map(async (record) => {
-      try {
-        // Extract track ID from Deezer URL
-        const trackId = record.deezer_url.split('/track/')[1];
-
-        // Fetch track data from Deezer API (for preview URL and album art)
-        const response = await fetch(`https://api.deezer.com/track/${trackId}`);
-        const trackData = await response.json();
-
-        if (trackData.error) {
-          console.warn(`Could not fetch data for track ${trackId}: ${trackData.error.message}`);
-          return null;
-        }
-
-        return {
-          id: trackId,
-          previewUrl: trackData.preview,
-          name: record.song_name,
-          artist: record.artist,
-          album: trackData.album?.title || 'Unknown Album',
-          albumArt: trackData.album?.cover_medium || trackData.album?.cover_small || '',
-          releaseDate: record.year, // Use verified year from CSV!
-          durationMs: trackData.duration * 1000 // Deezer uses seconds
-        };
-      } catch (err) {
-        console.error(`Error fetching track data: ${record.song_name} by ${record.artist}`, err);
-        return null;
-      }
+    // Return track metadata immediately (no API calls yet)
+    return records.map(record => {
+      const trackId = record.deezer_url.split('/track/')[1];
+      return {
+        id: trackId,
+        name: record.song_name,
+        artist: record.artist,
+        releaseDate: record.year, // Verified year from CSV!
+        deezerUrl: record.deezer_url,
+        // These will be fetched on-demand when song is selected
+        previewUrl: null,
+        album: null,
+        albumArt: null,
+        durationMs: null
+      };
     });
-
-    const tracks = await Promise.all(trackPromises);
-    // Filter out any failed tracks
-    return tracks.filter(track => track !== null);
   } catch (err) {
     console.error('Error loading tracks from CSV:', err);
     throw err;
   }
 }
 
+// Fetch preview URL and metadata from Deezer when a song is selected
+async function fetchTrackPreview(trackId) {
+  try {
+    const response = await fetch(`https://api.deezer.com/track/${trackId}`);
+    const trackData = await response.json();
+
+    if (trackData.error) {
+      console.warn(`Could not fetch preview for track ${trackId}`);
+      return null;
+    }
+
+    return {
+      previewUrl: trackData.preview,
+      album: trackData.album?.title || 'Unknown Album',
+      albumArt: trackData.album?.cover_medium || trackData.album?.cover_small || '',
+      durationMs: trackData.duration * 1000
+    };
+  } catch (err) {
+    console.error(`Error fetching track ${trackId}:`, err);
+    return null;
+  }
+}
+
 async function getPlaylistTracks(playlistId) {
-  // Load from CSV instead of Deezer playlist
-  return await loadTracksFromCSV();
+  // Load from CSV instantly (no API calls)
+  return loadTracksFromCSV();
 }
 
 function extractPlaylistId(input) {
@@ -210,7 +215,7 @@ io.on('connection', (socket) => {
   });
 
   // Host starts the game
-  socket.on('start-game', () => {
+  socket.on('start-game', async () => {
     const room = rooms.get(socket.roomCode);
     if (!room || room.hostId !== socket.id) return;
 
@@ -223,11 +228,11 @@ io.on('connection', (socket) => {
     room.usedTracks = new Set();
 
     io.to(socket.roomCode).emit('game-started');
-    startNextRound(socket.roomCode);
+    await startNextRound(socket.roomCode);
   });
 
   // Start next round
-  function startNextRound(roomCode) {
+  async function startNextRound(roomCode) {
     const room = rooms.get(roomCode);
     if (!room) return;
 
@@ -254,6 +259,16 @@ io.on('connection', (socket) => {
 
     const track = availableTracks[Math.floor(Math.random() * availableTracks.length)];
     room.usedTracks.add(track.id);
+
+    // Fetch preview URL and metadata on-demand
+    const trackPreview = await fetchTrackPreview(track.id);
+    if (trackPreview) {
+      track.previewUrl = trackPreview.previewUrl;
+      track.album = trackPreview.album;
+      track.albumArt = trackPreview.albumArt;
+      track.durationMs = trackPreview.durationMs;
+    }
+
     room.currentTrack = track;
     room.currentRound++;
     room.guesses.clear();
@@ -433,10 +448,10 @@ io.on('connection', (socket) => {
   }
 
   // Host starts next round
-  socket.on('next-round', () => {
+  socket.on('next-round', async () => {
     const room = rooms.get(socket.roomCode);
     if (!room || room.hostId !== socket.id) return;
-    startNextRound(socket.roomCode);
+    await startNextRound(socket.roomCode);
   });
 
   // Handle disconnect
