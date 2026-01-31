@@ -3,6 +3,9 @@ const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
 const cors = require('cors');
+const fs = require('fs');
+const path = require('path');
+const { parse } = require('csv-parse/sync');
 
 const app = express();
 const server = http.createServer(app);
@@ -51,54 +54,61 @@ function generateRoomCode() {
 
 // ============ DEEZER API HELPERS ============
 
-async function getPlaylistTracks(playlistId) {
+async function loadTracksFromCSV() {
   try {
-    const response = await fetch(`https://api.deezer.com/playlist/${playlistId}`);
-    const data = await response.json();
+    // Read CSV file
+    const csvPath = path.join(__dirname, 'songs_data.csv');
+    const csvData = fs.readFileSync(csvPath, 'utf-8');
+    const records = parse(csvData, {
+      columns: true,
+      skip_empty_lines: true
+    });
 
-    if (data.error) {
-      throw new Error(data.error.message || 'Failed to fetch playlist');
-    }
+    console.log(`Loaded ${records.length} songs from CSV`);
 
-    // Fetch individual track data to get original release dates
-    const trackPromises = data.tracks.data.map(async (track) => {
+    // Fetch preview URLs and metadata from Deezer API for each track
+    const trackPromises = records.map(async (record) => {
       try {
-        const trackResponse = await fetch(`https://api.deezer.com/track/${track.id}`);
-        const trackData = await trackResponse.json();
+        // Extract track ID from Deezer URL
+        const trackId = record.deezer_url.split('/track/')[1];
+
+        // Fetch track data from Deezer API (for preview URL and album art)
+        const response = await fetch(`https://api.deezer.com/track/${trackId}`);
+        const trackData = await response.json();
+
+        if (trackData.error) {
+          console.warn(`Could not fetch data for track ${trackId}: ${trackData.error.message}`);
+          return null;
+        }
 
         return {
-          id: track.id.toString(),
-          previewUrl: track.preview,
-          name: track.title,
-          artist: track.artist.name,
-          album: track.album.title,
-          albumArt: track.album.cover_medium || track.album.cover_small,
-          // Use track's release_date (original) instead of album's release_date (remaster)
-          releaseDate: trackData.release_date || track.album.release_date || 'Unknown',
-          durationMs: track.duration * 1000 // Deezer uses seconds, convert to ms
+          id: trackId,
+          previewUrl: trackData.preview,
+          name: record.song_name,
+          artist: record.artist,
+          album: trackData.album?.title || 'Unknown Album',
+          albumArt: trackData.album?.cover_medium || trackData.album?.cover_small || '',
+          releaseDate: record.year, // Use verified year from CSV!
+          durationMs: trackData.duration * 1000 // Deezer uses seconds
         };
       } catch (err) {
-        console.error(`Error fetching track ${track.id}:`, err);
-        // Fallback to album release date if track fetch fails
-        return {
-          id: track.id.toString(),
-          previewUrl: track.preview,
-          name: track.title,
-          artist: track.artist.name,
-          album: track.album.title,
-          albumArt: track.album.cover_medium || track.album.cover_small,
-          releaseDate: track.album?.release_date || 'Unknown',
-          durationMs: track.duration * 1000
-        };
+        console.error(`Error fetching track data: ${record.song_name} by ${record.artist}`, err);
+        return null;
       }
     });
 
     const tracks = await Promise.all(trackPromises);
-    return tracks;
+    // Filter out any failed tracks
+    return tracks.filter(track => track !== null);
   } catch (err) {
-    console.error('Error fetching Deezer playlist:', err);
+    console.error('Error loading tracks from CSV:', err);
     throw err;
   }
+}
+
+async function getPlaylistTracks(playlistId) {
+  // Load from CSV instead of Deezer playlist
+  return await loadTracksFromCSV();
 }
 
 function extractPlaylistId(input) {

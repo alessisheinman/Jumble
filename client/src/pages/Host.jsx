@@ -147,7 +147,7 @@ function Host() {
         <div style={{ textAlign: 'center' }}>
           <h2>Ready to Play?</h2>
           <p style={{ color: '#888', marginBottom: 30 }}>
-            6 songs loaded and ready to go!
+            1,675 songs loaded and ready to go!
           </p>
           <button
             onClick={handleCreateRoom}
