@@ -25,6 +25,8 @@ function Host() {
   const [loading, setLoading] = useState(false)
   const [volume, setVolume] = useState(50)
   const [skipMessage, setSkipMessage] = useState(null)
+  const [timeRemaining, setTimeRemaining] = useState(90)
+  const timerIntervalRef = useRef(null)
   const audioRef = useRef(null)
 
   // Initialize Socket connection
@@ -61,6 +63,21 @@ function Host() {
       setSubmissions({ total: 1, submitted: 0 })
       setRoundResults(null)
 
+      // Start countdown timer
+      setTimeRemaining(90)
+      if (timerIntervalRef.current) {
+        clearInterval(timerIntervalRef.current)
+      }
+      timerIntervalRef.current = setInterval(() => {
+        setTimeRemaining(prev => {
+          if (prev <= 1) {
+            clearInterval(timerIntervalRef.current)
+            return 0
+          }
+          return prev - 1
+        })
+      }, 1000)
+
       // Play track preview via HTML5 audio
       if (audioRef.current && previewUrl) {
         audioRef.current.src = previewUrl
@@ -79,6 +96,11 @@ function Host() {
       setGameState('results')
       setRoundResults({ track, results, roundWinner, pointsEarned })
       setPlayers(players)
+
+      // Stop timer
+      if (timerIntervalRef.current) {
+        clearInterval(timerIntervalRef.current)
+      }
 
       // Pause playback
       if (audioRef.current) {
@@ -101,6 +123,11 @@ function Host() {
       setSkipMessage(`${playerName} used a skip! Loading new song...`)
       setTimeout(() => setSkipMessage(null), 3000)
 
+      // Stop timer
+      if (timerIntervalRef.current) {
+        clearInterval(timerIntervalRef.current)
+      }
+
       // Pause audio
       if (audioRef.current) {
         audioRef.current.pause()
@@ -110,6 +137,11 @@ function Host() {
     newSocket.on('host-skipped-song', () => {
       setSkipMessage('Song skipped. Loading new song...')
       setTimeout(() => setSkipMessage(null), 3000)
+
+      // Stop timer
+      if (timerIntervalRef.current) {
+        clearInterval(timerIntervalRef.current)
+      }
 
       // Pause audio
       if (audioRef.current) {
@@ -123,6 +155,9 @@ function Host() {
     })
 
     return () => {
+      if (timerIntervalRef.current) {
+        clearInterval(timerIntervalRef.current)
+      }
       if (audioRef.current) {
         audioRef.current.pause()
         audioRef.current = null
@@ -316,6 +351,9 @@ function Host() {
             <div style={{ background: 'rgba(29, 185, 84, 0.2)', padding: '20px', borderRadius: '12px', marginBottom: '20px' }}>
               <p style={{ fontSize: '1.5rem', color: '#1DB954', fontWeight: 'bold' }}>
                 {currentPlayer.name}'s Turn
+              </p>
+              <p style={{ fontSize: '2rem', color: timeRemaining <= 10 ? '#ff6b6b' : '#fff', fontWeight: 'bold', marginTop: '10px' }}>
+                {Math.floor(timeRemaining / 60)}:{(timeRemaining % 60).toString().padStart(2, '0')}
               </p>
             </div>
           )}

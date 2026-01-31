@@ -22,6 +22,8 @@ function Player() {
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedSong, setSelectedSong] = useState(null)
   const [artistGuess, setArtistGuess] = useState('')
+  const [artistSearchQuery, setArtistSearchQuery] = useState('')
+  const [selectedArtist, setSelectedArtist] = useState(null)
   const [yearGuess, setYearGuess] = useState('')
   const [hasSubmitted, setHasSubmitted] = useState(false)
 
@@ -84,6 +86,8 @@ function Player() {
         setSearchQuery('')
         setSelectedSong(null)
         setArtistGuess('')
+        setArtistSearchQuery('')
+        setSelectedArtist(null)
         setYearGuess('')
       } else {
         setGameState('waiting')
@@ -163,6 +167,12 @@ function Player() {
   // Filter songs based on search (song name only)
   const filteredTracks = tracks.filter(track =>
     track.name.toLowerCase().includes(searchQuery.toLowerCase())
+  ).slice(0, 10)
+
+  // Get unique artists and filter based on search
+  const uniqueArtists = [...new Set(tracks.map(t => t.artist))].sort()
+  const filteredArtists = uniqueArtists.filter(artist =>
+    artist.toLowerCase().includes(artistSearchQuery.toLowerCase())
   ).slice(0, 10)
 
   return (
@@ -283,10 +293,39 @@ function Player() {
           <label>Artist</label>
           <input
             type="text"
-            placeholder="Artist name..."
-            value={artistGuess}
-            onChange={(e) => setArtistGuess(e.target.value)}
+            placeholder="Search for artist..."
+            value={artistSearchQuery}
+            onChange={(e) => {
+              setArtistSearchQuery(e.target.value)
+              setArtistGuess(e.target.value)
+              setSelectedArtist(null)
+            }}
           />
+          {artistSearchQuery && !selectedArtist && (
+            <div className="search-results">
+              {filteredArtists.map((artist, idx) => (
+                <div
+                  key={idx}
+                  className="search-result"
+                  onClick={() => {
+                    setSelectedArtist(artist)
+                    setArtistSearchQuery(artist)
+                    setArtistGuess(artist)
+                  }}
+                >
+                  <div><strong>{artist}</strong></div>
+                </div>
+              ))}
+              {filteredArtists.length === 0 && (
+                <div style={{ padding: 15, color: '#888' }}>No matches found</div>
+              )}
+            </div>
+          )}
+          {selectedArtist && (
+            <div style={{ color: '#1DB954', marginBottom: 10, marginTop: -10 }}>
+              Selected: {selectedArtist}
+            </div>
+          )}
 
           {/* Year */}
           <label>Release Year</label>

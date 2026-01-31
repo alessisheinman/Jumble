@@ -151,7 +151,8 @@ io.on('connection', (socket) => {
         guesses: new Map(),
         scores: new Map(),
         gameStarted: false,
-        roundActive: false
+        roundActive: false,
+        roundTimer: null
       };
 
       rooms.set(roomCode, room);
@@ -276,6 +277,19 @@ io.on('connection', (socket) => {
     room.roundActive = true;
     room.roundStartTime = Date.now();
 
+    // Clear any existing timer
+    if (room.roundTimer) {
+      clearTimeout(room.roundTimer);
+    }
+
+    // Start 90 second auto-end timer
+    room.roundTimer = setTimeout(() => {
+      if (room.roundActive) {
+        console.log(`Round ${room.currentRound} auto-ended after 90 seconds`);
+        endRound(roomCode);
+      }
+    }, 90000); // 90 seconds
+
     // Get current player
     const currentPlayer = room.players[room.currentPlayerIndex];
 
@@ -333,6 +347,12 @@ io.on('connection', (socket) => {
 
     socket.emit('guess-received');
 
+    // Clear the round timer
+    if (room.roundTimer) {
+      clearTimeout(room.roundTimer);
+      room.roundTimer = null;
+    }
+
     // Automatically end the round after current player submits
     endRound(socket.roomCode);
   });
@@ -358,6 +378,12 @@ io.on('connection', (socket) => {
     // Deduct skip
     currentPlayer.skipsRemaining--;
 
+    // Clear the round timer
+    if (room.roundTimer) {
+      clearTimeout(room.roundTimer);
+      room.roundTimer = null;
+    }
+
     // Cancel current round without ending it
     room.roundActive = false;
     room.guesses.clear();
@@ -378,6 +404,12 @@ io.on('connection', (socket) => {
     const room = rooms.get(socket.roomCode);
     if (!room || room.hostId !== socket.id) return;
     if (!room.roundActive) return;
+
+    // Clear the round timer
+    if (room.roundTimer) {
+      clearTimeout(room.roundTimer);
+      room.roundTimer = null;
+    }
 
     // Cancel current round without ending it
     room.roundActive = false;
@@ -400,6 +432,12 @@ io.on('connection', (socket) => {
   function endRound(roomCode) {
     const room = rooms.get(roomCode);
     if (!room || !room.roundActive) return;
+
+    // Clear the round timer
+    if (room.roundTimer) {
+      clearTimeout(room.roundTimer);
+      room.roundTimer = null;
+    }
 
     room.roundActive = false;
     const track = room.currentTrack;
@@ -501,6 +539,10 @@ io.on('connection', (socket) => {
 
     if (socket.id === room.hostId) {
       // Host left - end game
+      // Clear timer
+      if (room.roundTimer) {
+        clearTimeout(room.roundTimer);
+      }
       io.to(socket.roomCode).emit('host-disconnected');
       rooms.delete(socket.roomCode);
     } else {
