@@ -73,9 +73,9 @@ function Host() {
       setSubmissions({ total: totalPlayers, submitted: totalSubmitted })
     })
 
-    newSocket.on('round-results', ({ track, results, roundWinner, players }) => {
+    newSocket.on('round-results', ({ track, results, roundWinner, players, pointsEarned }) => {
       setGameState('results')
-      setRoundResults({ track, results, roundWinner })
+      setRoundResults({ track, results, roundWinner, pointsEarned })
       setPlayers(players)
 
       // Pause playback
@@ -295,19 +295,19 @@ function Host() {
             <h3 style={{ marginTop: 15 }}>{roundResults.track.name}</h3>
             <p style={{ color: '#b3b3b3' }}>{roundResults.track.artist}</p>
             <p style={{ color: '#888', marginTop: 10 }}>
-              {roundResults.track.year} • {roundResults.track.isOverThreeMin ? 'Over' : 'Under'} 3 minutes
+              Released in {roundResults.track.year}
             </p>
           </div>
 
-          {roundResults.earnedPoint && roundResults.roundWinner && (
+          {roundResults.pointsEarned > 0 && roundResults.roundWinner && (
             <div className="winner-banner">
-              ★ {roundResults.roundWinner.playerName} earned a point! ({roundResults.roundWinner.correctCount}/4 correct)
-              {roundResults.skippedNext && <div style={{ marginTop: '10px', fontSize: '0.9rem' }}>Perfect score! Next player skipped!</div>}
+              ★ {roundResults.roundWinner.playerName} earned {roundResults.pointsEarned} point{roundResults.pointsEarned > 1 ? 's' : ''}!
+              {roundResults.roundWinner.exactYear && <div style={{ marginTop: '10px', fontSize: '0.9rem' }}>Exact year! Double points!</div>}
             </div>
           )}
-          {!roundResults.earnedPoint && roundResults.roundWinner && (
+          {roundResults.pointsEarned === 0 && (
             <div style={{ background: 'rgba(255,107,107,0.2)', color: '#ff6b6b', padding: '20px', borderRadius: '16px', margin: '20px 0', textAlign: 'center' }}>
-              {roundResults.roundWinner.playerName} got {roundResults.roundWinner.correctCount}/4 correct. Need 3/4 to earn a point!
+              No points earned. Need both song name and artist correct!
             </div>
           )}
 
@@ -316,20 +316,19 @@ function Host() {
               <div key={result.playerId} style={{ padding: '15px', borderBottom: '1px solid rgba(255, 255, 255, 0.1)' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
                   <span style={{ fontWeight: 'bold', fontSize: '1.1rem' }}>{idx + 1}. {result.playerName}</span>
-                  <span style={{ fontSize: '1.2rem', color: '#1DB954' }}>{result.correctCount}/4</span>
                 </div>
                 <div style={{ fontSize: '0.9rem', color: '#b3b3b3', lineHeight: '1.6' }}>
                   <div className={result.details.songCorrect ? 'correct' : 'incorrect'}>
-                    Song: {result.guess.songId ? roundResults.track.name : 'Not selected'}
+                    Song: {result.guess.songId ? roundResults.track.name : 'Not selected'} {result.details.songCorrect ? '✓' : '✗'}
                   </div>
                   <div className={result.details.artistCorrect ? 'correct' : 'incorrect'}>
-                    Artist: {result.guess.artist || 'Not answered'}
+                    Artist: {result.guess.artist || 'Not answered'} {result.details.artistCorrect ? '✓' : '✗'}
                   </div>
-                  <div className={result.details.yearCorrect ? 'correct' : 'incorrect'}>
-                    Year: {result.guess.year || 'Not answered'}
-                  </div>
-                  <div className={result.details.durationCorrect ? 'correct' : 'incorrect'}>
-                    Duration: {result.guess.overThreeMin !== null ? (result.guess.overThreeMin ? 'Over 3 min' : 'Under 3 min') : 'Not answered'}
+                  <div className={result.details.exactYear ? 'correct' : result.details.yearWithin5 ? 'partial' : 'incorrect'}>
+                    Year: {result.guess.year || 'Not answered'} (off by {result.details.yearDiff} {result.details.yearDiff === 1 ? 'year' : 'years'})
+                    {result.details.exactYear && ' ✓ Exact!'}
+                    {!result.details.exactYear && result.details.yearWithin5 && ' ± Close!'}
+                    {!result.details.yearWithin5 && ' ✗'}
                   </div>
                 </div>
               </div>
@@ -348,12 +347,6 @@ function Host() {
           <button onClick={handleNextRound} style={{ marginTop: 20 }}>
             Next Round
           </button>
-
-          {roundResults.skippedNext && (
-            <p style={{ textAlign: 'center', color: '#888', marginTop: 15 }}>
-              Next player was skipped!
-            </p>
-          )}
         </div>
       )}
 

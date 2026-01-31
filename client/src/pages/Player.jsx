@@ -21,7 +21,6 @@ function Player() {
   const [selectedSong, setSelectedSong] = useState(null)
   const [artistGuess, setArtistGuess] = useState('')
   const [yearGuess, setYearGuess] = useState('')
-  const [overThreeMin, setOverThreeMin] = useState(null)
   const [hasSubmitted, setHasSubmitted] = useState(false)
 
   // Results
@@ -64,7 +63,6 @@ function Player() {
         setSelectedSong(null)
         setArtistGuess('')
         setYearGuess('')
-        setOverThreeMin(null)
       } else {
         setGameState('waiting')
       }
@@ -75,9 +73,9 @@ function Player() {
       setGameState('waiting')
     })
 
-    newSocket.on('round-results', ({ track, results, roundWinner, players, earnedPoint, skippedNext }) => {
+    newSocket.on('round-results', ({ track, results, roundWinner, players, pointsEarned }) => {
       setGameState('results')
-      setRoundResults({ track, results, roundWinner, earnedPoint, skippedNext })
+      setRoundResults({ track, results, roundWinner, pointsEarned })
       setPlayers(players)
     })
 
@@ -111,7 +109,7 @@ function Player() {
   }
 
   const handleSubmitGuess = () => {
-    if (!selectedSong || !yearGuess || overThreeMin === null) {
+    if (!selectedSong || !artistGuess || !yearGuess) {
       setError('Please fill in all fields')
       return
     }
@@ -119,8 +117,7 @@ function Player() {
     socket.emit('submit-guess', {
       songId: selectedSong.id,
       artist: artistGuess,
-      year: parseInt(yearGuess),
-      overThreeMin
+      year: parseInt(yearGuess)
     })
   }
 
@@ -261,25 +258,6 @@ function Player() {
             ))}
           </select>
 
-          {/* Duration */}
-          <label>Song Duration</label>
-          <div className="toggle-group">
-            <button
-              type="button"
-              className={`toggle-btn ${overThreeMin === false ? 'active' : ''}`}
-              onClick={() => setOverThreeMin(false)}
-            >
-              Under 3 min
-            </button>
-            <button
-              type="button"
-              className={`toggle-btn ${overThreeMin === true ? 'active' : ''}`}
-              onClick={() => setOverThreeMin(true)}
-            >
-              Over 3 min
-            </button>
-          </div>
-
           <button onClick={handleSubmitGuess} style={{ marginTop: 20 }}>
             Submit Guess
           </button>
@@ -323,18 +301,18 @@ function Player() {
           <h3 style={{ marginTop: 15 }}>{roundResults.track.name}</h3>
           <p style={{ color: '#888' }}>{roundResults.track.artist}</p>
           <p style={{ color: '#666', fontSize: '0.9rem' }}>
-            {roundResults.track.year} • {roundResults.track.isOverThreeMin ? 'Over' : 'Under'} 3 min
+            Released in {roundResults.track.year}
           </p>
 
-          {roundResults.earnedPoint && roundResults.roundWinner && (
+          {roundResults.pointsEarned > 0 && roundResults.roundWinner && (
             <div className="winner-banner" style={{ fontSize: '1rem', padding: 15, marginTop: 20 }}>
-              ★ {roundResults.roundWinner.playerName} earned a point! ({roundResults.roundWinner.correctCount}/4)
-              {roundResults.skippedNext && <div style={{ marginTop: '8px', fontSize: '0.85rem' }}>Perfect! Next player skipped!</div>}
+              ★ {roundResults.roundWinner.playerName} earned {roundResults.pointsEarned} point{roundResults.pointsEarned > 1 ? 's' : ''}!
+              {roundResults.roundWinner.exactYear && <div style={{ marginTop: '8px', fontSize: '0.85rem' }}>Exact year! Double points!</div>}
             </div>
           )}
-          {!roundResults.earnedPoint && roundResults.roundWinner && (
+          {roundResults.pointsEarned === 0 && (
             <div style={{ background: 'rgba(255,107,107,0.2)', color: '#ff6b6b', padding: '15px', borderRadius: '12px', margin: '20px 0' }}>
-              {roundResults.roundWinner.playerName}: {roundResults.roundWinner.correctCount}/4 (need 3/4 for a point)
+              No points earned. Need both song name and artist correct!
             </div>
           )}
 

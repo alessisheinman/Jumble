@@ -308,7 +308,7 @@ io.on('connection', (socket) => {
   }
 
   // Player submits guess
-  socket.on('submit-guess', ({ songId, artist, year, overThreeMin }) => {
+  socket.on('submit-guess', ({ songId, artist, year }) => {
     const room = rooms.get(socket.roomCode);
     if (!room || !room.roundActive) return;
 
@@ -327,7 +327,6 @@ io.on('connection', (socket) => {
       songId,
       artist,
       year,
-      overThreeMin,
       submissionTime
     });
 
@@ -351,77 +350,68 @@ io.on('connection', (socket) => {
     room.roundActive = false;
     const track = room.currentTrack;
     const correctYear = parseInt(track.releaseDate.substring(0, 4));
-    const isOverThreeMin = track.durationMs > 180000; // 3 minutes
 
     const results = [];
-    let skipNextPlayer = false;
 
     room.guesses.forEach((guess, playerId) => {
-      let correctCount = 0;
-
       // Check song name (by ID)
       const songCorrect = guess.songId === track.id;
-      if (songCorrect) correctCount++;
 
       // Check artist (fuzzy match)
       const artistCorrect = track.artist.toLowerCase().includes(guess.artist?.toLowerCase() || '');
-      if (artistCorrect) correctCount++;
 
-      // Check year (within ±3 years)
+      // Check year
       const yearDiff = Math.abs(guess.year - correctYear);
-      const yearCorrect = yearDiff <= 3;
-      if (yearCorrect) correctCount++;
-
-      // Check duration (over/under 3 minutes)
-      const durationCorrect = guess.overThreeMin === isOverThreeMin;
-      if (durationCorrect) correctCount++;
+      const exactYear = yearDiff === 0;
+      const yearWithin5 = yearDiff <= 5;
 
       results.push({
         playerId,
         playerName: guess.playerName,
         guess,
-        correctCount,
         submissionTime: guess.submissionTime,
         details: {
           songCorrect,
           artistCorrect,
-          yearCorrect,
-          durationCorrect
+          exactYear,
+          yearWithin5,
+          yearDiff
         }
       });
     });
 
-    // Award point based on new rules
+    // Award points based on new rules
     let roundWinner = null;
-    let earnedPoint = false;
+    let pointsEarned = 0;
 
     if (results.length > 0) {
       const result = results[0];
       const player = room.players.find(p => p.id === result.playerId);
 
-      // Need 3/4 correct to get a point
-      if (result.correctCount >= 3) {
-        earnedPoint = true;
-        if (player) {
-          player.stars++;
+      // Must have song name AND artist correct to earn any points
+      if (result.details.songCorrect && result.details.artistCorrect) {
+        if (result.details.exactYear) {
+          // Exact year: 2 points
+          pointsEarned = 2;
+          if (player) {
+            player.stars += 2;
+          }
+        } else if (result.details.yearWithin5) {
+          // Within 5 years: 1 point
+          pointsEarned = 1;
+          if (player) {
+            player.stars += 1;
+          }
         }
-        roundWinner = result;
 
-        // If 4/4 correct, skip next player
-        if (result.correctCount === 4) {
-          skipNextPlayer = true;
+        if (pointsEarned > 0) {
+          roundWinner = result;
         }
       }
     }
 
-    // Move to next player (with skip logic)
-    if (skipNextPlayer) {
-      // Skip next player: move 2 positions
-      room.currentPlayerIndex = (room.currentPlayerIndex + 2) % room.players.length;
-    } else {
-      // Normal: move 1 position
-      room.currentPlayerIndex = (room.currentPlayerIndex + 1) % room.players.length;
-    }
+    // Move to next player (no skip mechanic)
+    room.currentPlayerIndex = (room.currentPlayerIndex + 1) % room.players.length;
 
     // Send results to everyone
     io.to(roomCode).emit('round-results', {
@@ -429,20 +419,16 @@ io.on('connection', (socket) => {
         name: track.name,
         artist: track.artist,
         year: correctYear,
-        durationMs: track.durationMs,
-        albumArt: track.albumArt,
-        isOverThreeMin
+        albumArt: track.albumArt
       },
       results,
       roundWinner: roundWinner ? {
         playerId: roundWinner.playerId,
         playerName: roundWinner.playerName,
-        correctCount: roundWinner.correctCount,
-        earnedPoint: earnedPoint,
-        skippedNext: skipNextPlayer
+        pointsEarned: pointsEarned,
+        exactYear: roundWinner.details.exactYear
       } : null,
-      earnedPoint,
-      skippedNext: skipNextPlayer,
+      pointsEarned,
       players: room.players
     });
   }

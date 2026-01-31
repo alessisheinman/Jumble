@@ -231,6 +231,10 @@ input::placeholder {
   color: #1DB954;
 }
 
+.partial {
+  color: #ffa500;
+}
+
 .incorrect {
   color: #ff6b6b;
 }
