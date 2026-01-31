@@ -239,14 +239,27 @@ function Player() {
 
           {/* Year */}
           <label>Release Year</label>
-          <input
-            type="number"
-            placeholder="e.g. 1985"
+          <select
             value={yearGuess}
             onChange={(e) => setYearGuess(e.target.value)}
-            min="1900"
-            max="2030"
-          />
+            style={{
+              width: '100%',
+              padding: '12px',
+              fontSize: '1rem',
+              borderRadius: '8px',
+              border: '2px solid rgba(255, 255, 255, 0.1)',
+              background: 'rgba(255, 255, 255, 0.05)',
+              color: 'white',
+              cursor: 'pointer'
+            }}
+          >
+            <option value="">Select a year...</option>
+            {Array.from({ length: 2025 - 1950 + 1 }, (_, i) => 2025 - i).map(year => (
+              <option key={year} value={year} style={{ background: '#1a1a1a', color: 'white' }}>
+                {year}
+              </option>
+            ))}
+          </select>
 
           {/* Duration */}
           <label>Song Duration</label>
