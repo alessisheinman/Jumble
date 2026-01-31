@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { io } from 'socket.io-client'
 
 // Server URL - change this when deploying backend
@@ -17,6 +17,9 @@ function Player() {
   const [currentPlayerName, setCurrentPlayerName] = useState('')
   const [mySkipsRemaining, setMySkipsRemaining] = useState(3)
   const [skipMessage, setSkipMessage] = useState(null)
+  const [isMuted, setIsMuted] = useState(true)
+  const [isPlaying, setIsPlaying] = useState(false)
+  const audioRef = useRef(null)
 
   // Guess form state
   const [searchQuery, setSearchQuery] = useState('')
@@ -35,6 +38,11 @@ function Player() {
   useEffect(() => {
     const newSocket = io(SOCKET_URL)
     setSocket(newSocket)
+
+    // Initialize audio element
+    audioRef.current = new Audio()
+    audioRef.current.volume = 0.5
+    audioRef.current.muted = true
 
     newSocket.on('joined-room', ({ roomCode, players }) => {
       setGameState('lobby')
@@ -61,6 +69,12 @@ function Player() {
       setSkipMessage(`${playerName} used a skip! New song loading...`)
       setTimeout(() => setSkipMessage(null), 3000)
 
+      // Pause audio
+      if (audioRef.current) {
+        audioRef.current.pause()
+        setIsPlaying(false)
+      }
+
       // Update my skips if it was me
       const me = players.find(p => p.name === playerName)
       if (me) {
@@ -71,13 +85,30 @@ function Player() {
     newSocket.on('host-skipped-song', () => {
       setSkipMessage('Host skipped song. New song loading...')
       setTimeout(() => setSkipMessage(null), 3000)
+
+      // Pause audio
+      if (audioRef.current) {
+        audioRef.current.pause()
+        setIsPlaying(false)
+      }
     })
 
-    newSocket.on('round-start', ({ round, tracks, isYourTurn, currentPlayerName }) => {
+    newSocket.on('round-start', ({ round, tracks, isYourTurn, currentPlayerName, previewUrl }) => {
       setCurrentRound(round)
       setIsMyTurn(isYourTurn)
       setCurrentPlayerName(currentPlayerName)
       setHasSubmitted(false)
+
+      // Play audio if preview URL is provided
+      if (audioRef.current && previewUrl) {
+        audioRef.current.src = previewUrl
+        audioRef.current.muted = isMuted
+        audioRef.current.play().then(() => {
+          setIsPlaying(true)
+        }).catch(err => {
+          console.error('Failed to play audio:', err)
+        })
+      }
 
       if (isYourTurn) {
         setTracks(tracks)
@@ -97,12 +128,24 @@ function Player() {
     newSocket.on('guess-received', () => {
       setHasSubmitted(true)
       setGameState('waiting')
+
+      // Pause audio
+      if (audioRef.current) {
+        audioRef.current.pause()
+        setIsPlaying(false)
+      }
     })
 
     newSocket.on('round-results', ({ track, results, roundWinner, players, pointsEarned }) => {
       setGameState('results')
       setRoundResults({ track, results, roundWinner, pointsEarned })
       setPlayers(players)
+
+      // Pause audio
+      if (audioRef.current) {
+        audioRef.current.pause()
+        setIsPlaying(false)
+      }
     })
 
     newSocket.on('game-over', ({ winner, players }) => {
@@ -121,6 +164,10 @@ function Player() {
     })
 
     return () => {
+      if (audioRef.current) {
+        audioRef.current.pause()
+        audioRef.current = null
+      }
       newSocket.close()
     }
   }, [])
@@ -154,6 +201,29 @@ function Player() {
     }
     setError(null)
     socket.emit('use-skip')
+  }
+
+  const toggleMute = () => {
+    const newMutedState = !isMuted
+    setIsMuted(newMutedState)
+    if (audioRef.current) {
+      audioRef.current.muted = newMutedState
+    }
+  }
+
+  const togglePlayPause = () => {
+    if (!audioRef.current) return
+
+    if (isPlaying) {
+      audioRef.current.pause()
+      setIsPlaying(false)
+    } else {
+      audioRef.current.play().then(() => {
+        setIsPlaying(true)
+      }).catch(err => {
+        console.error('Failed to play audio:', err)
+      })
+    }
   }
 
   // Update my skips when players array changes
@@ -249,9 +319,27 @@ function Player() {
         <div className="guess-form">
           <h2 style={{ textAlign: 'center' }}>Round {currentRound}</h2>
           <p style={{ textAlign: 'center', color: '#888', marginBottom: 10 }}>Listen and guess!</p>
-          <p style={{ textAlign: 'center', color: '#1DB954', fontSize: '0.9rem', marginBottom: 20 }}>
+          <p style={{ textAlign: 'center', color: '#1DB954', fontSize: '0.9rem', marginBottom: 10 }}>
             Skips remaining: {mySkipsRemaining}
           </p>
+
+          {/* Audio Controls */}
+          <div style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
+            <button
+              onClick={togglePlayPause}
+              className="secondary"
+              style={{ flex: 1 }}
+            >
+              {isPlaying ? '⏸ Pause' : '▶ Play'}
+            </button>
+            <button
+              onClick={toggleMute}
+              className="secondary"
+              style={{ flex: 1 }}
+            >
+              {isMuted ? '🔇 Unmute' : '🔊 Mute'}
+            </button>
+          </div>
 
           {/* Song search */}
           <label>Song Name</label>
@@ -373,6 +461,24 @@ function Player() {
           <h2>Round {currentRound}</h2>
           <p style={{ fontSize: '1.2rem', marginTop: 20 }}>It's {currentPlayerName}'s turn</p>
           <p style={{ color: '#888', marginTop: 10 }}>Listen to the song and get ready!</p>
+
+          {/* Audio Controls */}
+          <div style={{ display: 'flex', gap: '10px', marginTop: '20px', maxWidth: '400px', marginLeft: 'auto', marginRight: 'auto' }}>
+            <button
+              onClick={togglePlayPause}
+              className="secondary"
+              style={{ flex: 1 }}
+            >
+              {isPlaying ? '⏸ Pause' : '▶ Play'}
+            </button>
+            <button
+              onClick={toggleMute}
+              className="secondary"
+              style={{ flex: 1 }}
+            >
+              {isMuted ? '🔇 Unmute' : '🔊 Mute'}
+            </button>
+          </div>
         </div>
       )}
 

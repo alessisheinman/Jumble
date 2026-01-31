@@ -307,7 +307,8 @@ io.on('connection', (socket) => {
     io.to(currentPlayer.id).emit('round-start', {
       round: room.currentRound,
       tracks: room.tracks.map(t => ({ id: t.id, name: t.name, artist: t.artist })),
-      isYourTurn: true
+      isYourTurn: true,
+      previewUrl: track.previewUrl
     });
 
     // Tell other players to wait
@@ -316,7 +317,8 @@ io.on('connection', (socket) => {
         io.to(player.id).emit('round-start', {
           round: room.currentRound,
           isYourTurn: false,
-          currentPlayerName: currentPlayer.name
+          currentPlayerName: currentPlayer.name,
+          previewUrl: track.previewUrl
         });
       }
     });
