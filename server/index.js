@@ -180,7 +180,7 @@ io.on('connection', (socket) => {
       return;
     }
 
-    if (room.players.length >= 6) {
+    if (room.players.length >= 10) {
       socket.emit('error', { message: 'Room is full' });
       return;
     }

@@ -5,7 +5,7 @@ A Jackbox/Hitster-style multiplayer music guessing game powered by Deezer.
 ## How It Works
 
 1. **Host** creates a room and enters a Deezer playlist URL
-2. **Players** (up to 6) join the room using a 4-letter code on their phones
+2. **Players** (up to 10) join the room using a 4-letter code on their phones
 3. A random 30-second song preview from the playlist plays on the host's screen
 4. Players guess facts about the song:
    - Song name (search from playlist)
