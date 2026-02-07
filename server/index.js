@@ -15,6 +15,7 @@ const allowedOrigins = [
   'http://localhost:5173',
   'https://localhost:5173',
   'https://alessisheinman.github.io',
+  'https://fieldluke667-lgtm.github.io',
   process.env.CLIENT_URL
 ].filter(Boolean);
 
